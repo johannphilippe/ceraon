@@ -12,6 +12,21 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+option(RTAUDIO "Use RtAudio module for playback" ON)
+option(TESTS "Build test executable" ON)
+
+
+#############################################
+#    	Build submodules
+#############################################
+find_package(RtAudio REQUIRED)
+if(RTAUDIO)
+      #add_subdirectory(rtaudio)
+endif()
+
+#############################################
+#    	Build Combinator 3000 library
+#############################################
 set(COMBINATOR_SRC
     ./src/combinator3000.h
     ./src/combinator3000.cpp
@@ -26,19 +41,24 @@ set(COMBINATOR_SRC
 add_library(combinator3000 SHARED
       ${COMBINATOR_SRC})
 
-target_link_libraries(combinator3000 PRIVATE
-   pthread
-   )
+target_link_libraries(combinator3000 PRIVATE pthread)
 
-## Test
+if(RTAUDIO)
+      #target_link_libraries(combinator3000 PUBLIC rtaudio)
+endif()
+
+#############################################
+#    	Build Combinator 3000 tests
+#############################################
 add_executable(combinator3000_test
       ${COMBINATOR_SRC}
       ./src/faust/osc.hpp
       ./src/faust/square.hpp
       ./src/faust/filter.hpp
       ./src/test.cpp
-	)
-target_link_libraries(combinator3000_test PRIVATE
-   pthread
-   sndfile
-   )
+      )
+
+target_link_libraries(combinator3000_test PUBLIC pthread sndfile rtaudio)
+#if(RTAUDIO)
+#      target_link_libraries(combinator3000_test PRIVATE rtaudio)
+#endif()
