@@ -37,20 +37,23 @@ then the operation can happen. Else, it raises an error.
 
 ## TODO 
 
+- Graph : must have a buffer, and take output when the "process block" is ending (so that only need to pass graph as user data)
+- Bloc size adapter : useless. Any node could perfectly use a smaller bloc, and perform higher accuracy internally.
+
 - Add destructors everywhere 
 - Optimizations in general
   - The graph class must have some optim to do
   - A general memory pool to allocate buffers 
 - Blocsize adapter (without resampling)
-- Thread safety
+- Thread safety and threading model 
+  - Thread locks
+  - Idea that several graphs could be used on separated threads to improve performance (taking advantage of several cores)
 
 - FFT node
 - Faust LLVM node
 - Csound node
 - Supercollider node 
 - Base nodes (gain, fadein, fadeout etc)
-
 - RtAudio nodes
-
 - For RtAudio, FFT & Faust LLVM (Csound and SC too) try to put options to build it or not (not always needed)
 - API to create external nodes and build it (so API to link dynamik libraries at runtime)
