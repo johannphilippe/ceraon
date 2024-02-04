@@ -12,19 +12,26 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-option(RTAUDIO "Use RtAudio module for playback" ON)
 option(TESTS "Build test executable" ON)
-option(FFT_NODE "Build FFT node" ON)
+option(BUILD_FFT_NODE "Build FFT node" ON)
 
-find_package(RtAudio REQUIRED)
+set(PLUGIN_NODES_LIB "")
 #############################################
-#    	Build submodules
+#  Build submodules and corresponding nodes
 #############################################
-if(FFT_NODE)
-      add_library(audiofft 
-      ./src/AudioFFT/AudioFFT.h 
-      ./src/AudioFFT/AudioFFT.cpp)
+add_subdirectory(./src/rtaudio)
+
+if(BUILD_FFT_NODE)
+      add_library(fft_node STATIC
+      ./src/fft/AudioFFT/AudioFFT.h 
+      ./src/fft/AudioFFT/AudioFFT.cpp
+      ./src/fft/fft_node.h)
+      target_include_directories(fft_node PUBLIC ./src)
+      set(PLUGIN_NODES_LIB ${PLUGIN_NODES_LIB} fft_node)
 endif()
+
+
+#string(STRIP ${PLUGIN_NODES_LIB} PLUGIN_NODES_LIB)
 
 #############################################
 #    	Build Combinator 3000 library
@@ -44,6 +51,7 @@ add_library(combinator3000 SHARED
       ${COMBINATOR_SRC})
 
 target_link_libraries(combinator3000 PRIVATE pthread)
+target_link_libraries(combinator3000 PUBLIC ${PLUGIN_NODES_LIB})
 
 #############################################
 #    	Build Combinator 3000 tests
@@ -55,8 +63,11 @@ if(TESTS)
             ./src/faust/tests/osc.hpp
             ./src/faust/tests/square.hpp
             ./src/faust/tests/filter.hpp
+            ./src/faust/tests/fftdel.hpp
             ./src/tests/test.cpp
             )
 
       target_link_libraries(combinator3000_test PUBLIC pthread sndfile rtaudio)
+      target_link_libraries(combinator3000_test PUBLIC ${PLUGIN_NODES_LIB})
+      target_include_directories(combinator3000_test PUBLIC ./src)
 endif()

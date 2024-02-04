@@ -73,10 +73,10 @@
 * {
 *   const size_t fftSize = 1024; // Needs to be power of 2!
 *
-*   std::vector<float> input(fftSize, 0.0f);
-*   std::vector<float> re(audiofft::AudioFFT::ComplexSize(fftSize));
-*   std::vector<float> im(audiofft::AudioFFT::ComplexSize(fftSize));
-*   std::vector<float> output(fftSize);
+*   std::vector<double> input(fftSize, 0.0f);
+*   std::vector<double> re(audiofft::AudioFFT::ComplexSize(fftSize));
+*   std::vector<double> im(audiofft::AudioFFT::ComplexSize(fftSize));
+*   std::vector<double> output(fftSize);
 *
 *   audiofft::AudioFFT fft;
 *   fft.init(1024);
@@ -135,7 +135,7 @@ namespace audiofft
      * @param re The real part of the complex output (has to be of length as returned by ComplexSize())
      * @param im The imaginary part of the complex output (has to be of length as returned by ComplexSize())
      */
-    void fft(const float* data, float* re, float* im);
+    void fft(const double* data, double* re, double* im);
 
     /**
      * @brief Performs the inverse FFT
@@ -143,7 +143,7 @@ namespace audiofft
      * @param re The real part of the complex input (has to be of length as returned by ComplexSize())
      * @param im The imaginary part of the complex input (has to be of length as returned by ComplexSize())
      */
-    void ifft(float* data, const float* re, const float* im);
+    void ifft(double* data, const double* re, const double* im);
 
     /**
      * @brief Calculates the necessary size of the real/imaginary complex arrays

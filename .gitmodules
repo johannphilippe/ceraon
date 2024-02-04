@@ -1,3 +1,6 @@
 [submodule "src/AudioFFT"]
 	path = src/fft/AudioFFT
 	url = https://github.com/HiFi-LoFi/AudioFFT.git
+[submodule "src/rtaudio"]
+	path = src/rtaudio
+	url = https://github.com/thestk/rtaudio.git

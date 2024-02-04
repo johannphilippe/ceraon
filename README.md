@@ -36,10 +36,10 @@ then the operation can happen. Else, it raises an error.
 
 ## Dependencies 
 
-- RtAudio
 
 ## Submodules 
 
+- RtAudio
 - AudioFFT (optional)
 
 
