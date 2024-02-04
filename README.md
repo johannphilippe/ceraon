@@ -34,6 +34,14 @@ But
 then the operation can happen. Else, it raises an error.
 * Same applies for bloc_size (adapter if not the same) and samplerate (resampler can be user to upsample or downsample)
 
+## Dependencies 
+
+- RtAudio
+
+## Submodules 
+
+- AudioFFT (optional)
+
 
 ## TODO 
 

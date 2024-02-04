@@ -1,6 +1,10 @@
 #ifndef FAUST_NODE_H
 #define FAUST_NODE_H
 
+/*
+    Faust basic node (works with Faust C++ generated code following a simple architecture)
+*/
+
 #include "combinator3000.h"
 #include "asciiplotter/asciiplotter.h"
 

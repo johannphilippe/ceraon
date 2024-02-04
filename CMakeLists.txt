@@ -14,14 +14,16 @@ endif()
 
 option(RTAUDIO "Use RtAudio module for playback" ON)
 option(TESTS "Build test executable" ON)
+option(FFT_NODE "Build FFT node" ON)
 
-
+find_package(RtAudio REQUIRED)
 #############################################
 #    	Build submodules
 #############################################
-find_package(RtAudio REQUIRED)
-if(RTAUDIO)
-      #add_subdirectory(rtaudio)
+if(FFT_NODE)
+      add_library(audiofft 
+      ./src/AudioFFT/AudioFFT.h 
+      ./src/AudioFFT/AudioFFT.cpp)
 endif()
 
 #############################################
@@ -30,7 +32,7 @@ endif()
 set(COMBINATOR_SRC
     ./src/combinator3000.h
     ./src/combinator3000.cpp
-    ./src/faust_node.h
+    ./src/faust/faust_node.h
     ./src/asciiplotter/asciiplotter.h
     ./src/asciiplotter/asciiplotter.cpp
     ./src/halfband/halfband.cpp
@@ -43,22 +45,18 @@ add_library(combinator3000 SHARED
 
 target_link_libraries(combinator3000 PRIVATE pthread)
 
-if(RTAUDIO)
-      #target_link_libraries(combinator3000 PUBLIC rtaudio)
-endif()
-
 #############################################
 #    	Build Combinator 3000 tests
 #############################################
-add_executable(combinator3000_test
-      ${COMBINATOR_SRC}
-      ./src/faust/osc.hpp
-      ./src/faust/square.hpp
-      ./src/faust/filter.hpp
-      ./src/test.cpp
-      )
 
-target_link_libraries(combinator3000_test PUBLIC pthread sndfile rtaudio)
-#if(RTAUDIO)
-#      target_link_libraries(combinator3000_test PRIVATE rtaudio)
-#endif()
+if(TESTS)
+      add_executable(combinator3000_test
+            ${COMBINATOR_SRC}
+            ./src/faust/tests/osc.hpp
+            ./src/faust/tests/square.hpp
+            ./src/faust/tests/filter.hpp
+            ./src/tests/test.cpp
+            )
+
+      target_link_libraries(combinator3000_test PUBLIC pthread sndfile rtaudio)
+endif()
