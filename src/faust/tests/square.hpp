@@ -42,7 +42,7 @@ Compilation options: -a simple.arch -lang cpp -ct 1 -cn square -es 1 -mcd 16 -md
  
 #include <algorithm>
 
-#include "faust/gui/UI.h"
+#include "faust/gui/MapUI.h"
 #include "faust/gui/meta.h"
 #include "faust/dsp/dsp.h"
 

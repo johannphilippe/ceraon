@@ -1,5 +1,4 @@
 import("stdfaust.lib");
 
-effect(d) = de.delay(d, d) : ve.korg35LPF(0.6, 3);
-
-process = _,_ : effect(256), effect(128);
+freq = hslider("freq", 5, 1, 100, 0.1);
+process = _, _, _ : _, *(os.osc(freq)), _;

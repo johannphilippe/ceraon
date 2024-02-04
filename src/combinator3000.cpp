@@ -16,6 +16,14 @@ node<Flt>::node( size_t inp, size_t outp, size_t blocsize, size_t samplerate)
 }
 
 template<typename Flt>
+node<Flt>::~node()
+{
+    for(size_t i = 0; i < n_outputs; ++i)
+        delete outputs[i];
+    delete outputs;
+}
+
+template<typename Flt>
 bool node<Flt>::connect(node<Flt> *n)
 {
     if(this->n_outputs == n->n_inputs) {
@@ -197,6 +205,13 @@ simple_upsampler<Flt>::simple_upsampler(size_t inp, size_t outp, size_t blocsize
 }
 
 template<typename Flt>
+simple_upsampler<Flt>::~simple_upsampler()
+{
+    for(size_t i = 0; i < this->n_outputs; ++i)
+        destroy_halfband(filters[i]);
+}
+
+template<typename Flt>
 void simple_upsampler<Flt>::process(node<Flt> *previous)
 {
     for(size_t ch = 0; ch < this->n_inputs; ++ch)
@@ -230,6 +245,13 @@ upsampler<Flt>::upsampler(size_t inp, size_t outp, size_t blocsize, size_t sampl
 }
 
 template<typename Flt>
+upsampler<Flt>::~upsampler()
+{
+    for(size_t i = 0; i < this->n_cascade; ++i)
+        delete this->upsamplers[i];
+}
+
+template<typename Flt>
 void upsampler<Flt>::process(node<Flt> *previous)
 {
     node<Flt> *p = previous;
@@ -255,6 +277,13 @@ downsampler<Flt>::downsampler(size_t inp, size_t outp, size_t blocsize, size_t s
     decimators.resize(this->n_outputs);
     for(size_t i = 0; i < this->n_outputs; ++i)
         decimators[i] = create_half_cascade(n_cascade, f_order, f_steep);
+}
+
+template<typename Flt>
+downsampler<Flt>::~downsampler()
+{
+    for(size_t i = 0; i < this->n_outputs; ++i)
+        destroy_half_cascade(decimators[i]);
 }
 
 template<typename Flt>

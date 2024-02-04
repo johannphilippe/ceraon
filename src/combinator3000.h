@@ -15,6 +15,7 @@ template<typename Flt = double>
 struct node
 {
     node(size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000);
+    ~node();
 
     bool connect(node *n);
     bool disconnect(node *n);
@@ -56,6 +57,7 @@ template<typename Flt = double>
 struct simple_upsampler : public node<Flt>
 {
     simple_upsampler(size_t inp = 0, size_t outp = 0, size_t bloc_size = 128, size_t samplerate= 48000, size_t order = 10, size_t steep = 1);
+    ~simple_upsampler();
     void process(node<Flt> *previous) override;
 
     size_t f_order, f_steep;
@@ -66,6 +68,7 @@ template<typename Flt = double>
 struct upsampler : public node<Flt>
 {
     upsampler(size_t inp = 0, size_t outp = 0, size_t bloc_size = 128, size_t samplerate= 48000, size_t num_cascade = 1, size_t order = 10, size_t steep = 1);
+    ~upsampler();
     void process(node<Flt> *previous) override;
 
     size_t n_cascade, f_order, f_steep, n_samps_iter;
@@ -76,6 +79,7 @@ template<typename Flt = double>
 struct downsampler : public node<Flt>
 {
     downsampler(size_t inp = 0, size_t outp = 0, size_t bloc_size = 128, size_t samplerate= 48000, size_t num_cascade = 1, size_t order = 10, size_t steep = 1);
+    ~downsampler();
     void process(node<Flt> *previous) override;
 
     size_t n_cascade, f_order, f_steep, n_samps_iter;
@@ -100,7 +104,8 @@ struct graph
 template<typename Flt = double>
 struct graph
 {
-    graph() {}
+    graph() 
+    {}
 
     void add_node(node<Flt> *n)
     {
@@ -142,7 +147,6 @@ struct graph
     std::vector<call_grape> to_call, next_call;
     std::vector<call_grape> *to_call_ptr, *next_call_ptr;
 
-
     size_t grape_process_count;
 private:
 
@@ -159,7 +163,12 @@ private:
     {
         std::swap(to_call_ptr, next_call_ptr);
         next_call_ptr->clear();
-        if(to_call_ptr->size() == 0) return;
+        if(to_call_ptr->size() == 0) 
+        {
+            // End of block
+            // Copy outputs of last nodes to graph outputs and exit
+            return;
+        }
         for(size_t i = 0; i < to_call_ptr->size(); ++i)
         {
             node<Flt> *caller = to_call_ptr->at(i).caller; // nullptr at first pass

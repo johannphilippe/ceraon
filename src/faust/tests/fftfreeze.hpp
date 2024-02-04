@@ -1,11 +1,11 @@
 /* ------------------------------------------------------------
-name: "osc"
+name: "fftfreeze"
 Code generated with Faust 2.71.0 (https://faust.grame.fr)
-Compilation options: -a simple.arch -lang cpp -ct 1 -cn osc -es 1 -mcd 16 -mdd 1024 -mdy 33 -double -ftz 0
+Compilation options: -a simple.arch -lang cpp -ct 1 -cn fftfreeze -es 1 -mcd 16 -mdd 1024 -mdy 33 -double -ftz 0
 ------------------------------------------------------------ */
 
-#ifndef  __osc_H__
-#define  __osc_H__
+#ifndef  __fftfreeze_H__
+#define  __fftfreeze_H__
 
 /************************************************************************
  IMPORTANT NOTE : this file contains two clearly delimited sections :
@@ -73,10 +73,9 @@ using std::min;
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <math.h>
 
 #ifndef FAUSTCLASS 
-#define FAUSTCLASS osc
+#define FAUSTCLASS fftfreeze
 #endif
 
 #ifdef __APPLE__ 
@@ -90,116 +89,76 @@ using std::min;
 #define RESTRICT __restrict__
 #endif
 
-class oscSIG0 {
-	
-  private:
-	
-	int iVec0[2];
-	int iRec2[2];
-	
-  public:
-	
-	int getNumInputsoscSIG0() {
-		return 0;
-	}
-	int getNumOutputsoscSIG0() {
-		return 1;
-	}
-	
-	void instanceInitoscSIG0(int sample_rate) {
-		for (int l0 = 0; l0 < 2; l0 = l0 + 1) {
-			iVec0[l0] = 0;
-		}
-		for (int l1 = 0; l1 < 2; l1 = l1 + 1) {
-			iRec2[l1] = 0;
-		}
-	}
-	
-	void filloscSIG0(int count, double* table) {
-		for (int i1 = 0; i1 < count; i1 = i1 + 1) {
-			iVec0[0] = 1;
-			iRec2[0] = (iVec0[1] + iRec2[1]) % 65536;
-			table[i1] = std::sin(9.587379924285257e-05 * double(iRec2[0]));
-			iVec0[1] = iVec0[0];
-			iRec2[1] = iRec2[0];
-		}
-	}
+static double fftfreeze_faustpower2_f(double value) {
+	return value * value;
+}
 
-};
-
-static oscSIG0* newoscSIG0() { return (oscSIG0*)new oscSIG0(); }
-static void deleteoscSIG0(oscSIG0* dsp) { delete dsp; }
-
-static double ftbl0oscSIG0[65536];
-
-class osc : public dsp {
+class fftfreeze : public dsp {
 	
  private:
 	
-	int iVec1[2];
-	int fSampleRate;
-	double fConst0;
-	double fConst1;
-	double fRec3[2];
-	double fConst2;
+	FAUSTFLOAT fCheckbox0;
+	int IOTA0;
+	double fVec0[16384];
+	FAUSTFLOAT fHslider0;
+	double fVec1[16384];
 	double fRec0[2];
+	double fVec2[16384];
+	double fVec3[16384];
+	double fRec1[2];
+	FAUSTFLOAT fHslider1;
+	int fSampleRate;
 	
  public:
-	osc() {}
+	fftfreeze() {}
 
 	void metadata(Meta* m) { 
-		m->declare("basics.lib/name", "Faust Basic Element Library");
-		m->declare("basics.lib/tabulateNd", "Copyright (C) 2023 Bart Brouns <bart@magnetophon.nl>");
-		m->declare("basics.lib/version", "1.12.0");
-		m->declare("compile_options", "-a simple.arch -lang cpp -ct 1 -cn osc -es 1 -mcd 16 -mdd 1024 -mdy 33 -double -ftz 0");
-		m->declare("filename", "osc.dsp");
-		m->declare("maths.lib/author", "GRAME");
-		m->declare("maths.lib/copyright", "GRAME");
-		m->declare("maths.lib/license", "LGPL with exception");
-		m->declare("maths.lib/name", "Faust Math Library");
-		m->declare("maths.lib/version", "2.7.0");
-		m->declare("name", "osc");
-		m->declare("oscillators.lib/name", "Faust Oscillator Library");
-		m->declare("oscillators.lib/saw2ptr:author", "Julius O. Smith III");
-		m->declare("oscillators.lib/saw2ptr:license", "STK-4.3");
-		m->declare("oscillators.lib/version", "1.5.0");
-		m->declare("platform.lib/name", "Generic Platform Library");
-		m->declare("platform.lib/version", "1.3.0");
+		m->declare("compile_options", "-a simple.arch -lang cpp -ct 1 -cn fftfreeze -es 1 -mcd 16 -mdd 1024 -mdy 33 -double -ftz 0");
+		m->declare("delays.lib/name", "Faust Delay Library");
+		m->declare("delays.lib/version", "1.1.0");
+		m->declare("filename", "fftfreeze.dsp");
+		m->declare("name", "fftfreeze");
 	}
 
 	virtual int getNumInputs() {
-		return 0;
+		return 3;
 	}
 	virtual int getNumOutputs() {
-		return 1;
+		return 3;
 	}
 	
 	static void classInit(int sample_rate) {
-		oscSIG0* sig0 = newoscSIG0();
-		sig0->instanceInitoscSIG0(sample_rate);
-		sig0->filloscSIG0(65536, ftbl0oscSIG0);
-		deleteoscSIG0(sig0);
 	}
 	
 	virtual void instanceConstants(int sample_rate) {
 		fSampleRate = sample_rate;
-		fConst0 = std::min<double>(1.92e+05, std::max<double>(1.0, double(fSampleRate)));
-		fConst1 = 0.2 / fConst0;
-		fConst2 = 1.0 / fConst0;
 	}
 	
 	virtual void instanceResetUserInterface() {
+		fCheckbox0 = FAUSTFLOAT(0.0);
+		fHslider0 = FAUSTFLOAT(1024.0);
+		fHslider1 = FAUSTFLOAT(0.0);
 	}
 	
 	virtual void instanceClear() {
+		IOTA0 = 0;
+		for (int l0 = 0; l0 < 16384; l0 = l0 + 1) {
+			fVec0[l0] = 0.0;
+		}
+		for (int l1 = 0; l1 < 16384; l1 = l1 + 1) {
+			fVec1[l1] = 0.0;
+		}
 		for (int l2 = 0; l2 < 2; l2 = l2 + 1) {
-			iVec1[l2] = 0;
+			fRec0[l2] = 0.0;
 		}
-		for (int l3 = 0; l3 < 2; l3 = l3 + 1) {
-			fRec3[l3] = 0.0;
+		for (int l3 = 0; l3 < 16384; l3 = l3 + 1) {
+			fVec2[l3] = 0.0;
 		}
-		for (int l4 = 0; l4 < 2; l4 = l4 + 1) {
-			fRec0[l4] = 0.0;
+		for (int l4 = 0; l4 < 16384; l4 = l4 + 1) {
+			fVec3[l4] = 0.0;
+		}
+		for (int l5 = 0; l5 < 2; l5 = l5 + 1) {
+			fRec1[l5] = 0.0;
 		}
 	}
 	
@@ -214,8 +173,8 @@ class osc : public dsp {
 		instanceClear();
 	}
 	
-	virtual osc* clone() {
-		return new osc();
+	virtual fftfreeze* clone() {
+		return new fftfreeze();
 	}
 	
 	virtual int getSampleRate() {
@@ -223,26 +182,46 @@ class osc : public dsp {
 	}
 	
 	virtual void buildUserInterface(UI* ui_interface) {
-		ui_interface->openVerticalBox("osc");
+		ui_interface->openVerticalBox("fftfreeze");
+		ui_interface->addHorizontalSlider("Reduce", &fHslider1, FAUSTFLOAT(0.0), FAUSTFLOAT(0.0), FAUSTFLOAT(2.0), FAUSTFLOAT(0.01));
+		ui_interface->addHorizontalSlider("fftSize", &fHslider0, FAUSTFLOAT(1024.0), FAUSTFLOAT(2.0), FAUSTFLOAT(16384.0), FAUSTFLOAT(1.0));
+		ui_interface->addCheckButton("freezeBtn", &fCheckbox0);
 		ui_interface->closeBox();
 	}
 	
 	virtual void compute(int count, FAUSTFLOAT** RESTRICT inputs, FAUSTFLOAT** RESTRICT outputs) {
+		FAUSTFLOAT* input0 = inputs[0];
+		FAUSTFLOAT* input1 = inputs[1];
+		FAUSTFLOAT* input2 = inputs[2];
 		FAUSTFLOAT* output0 = outputs[0];
+		FAUSTFLOAT* output1 = outputs[1];
+		FAUSTFLOAT* output2 = outputs[2];
+		double fSlow0 = double(fCheckbox0);
+		double fSlow1 = 1.0 - fSlow0;
+		double fSlow2 = 0.5 * double(fHslider0);
+		int iSlow3 = int(std::min<double>(16384.0, std::max<double>(0.0, fSlow2 + 1.0)));
+		int iSlow4 = int(std::min<double>(16384.0, std::max<double>(0.0, fSlow2)));
+		double fSlow5 = double(fHslider1);
 		for (int i0 = 0; i0 < count; i0 = i0 + 1) {
-			iVec1[0] = 1;
-			double fTemp0 = ((1 - iVec1[1]) ? 0.0 : fConst1 + fRec3[1]);
-			fRec3[0] = fTemp0 - std::floor(fTemp0);
-			double fTemp1 = std::max<double>(2.220446049250313e-16, std::fabs(5e+02 * std::fabs(ftbl0oscSIG0[std::max<int>(0, std::min<int>(int(65536.0 * fRec3[0]), 65535))]) + 3e+01));
-			double fTemp2 = fRec0[1] + fConst2 * fTemp1;
-			double fTemp3 = fTemp2 + -1.0;
-			int iTemp4 = fTemp3 < 0.0;
-			fRec0[0] = ((iTemp4) ? fTemp2 : fTemp3);
-			double fRec1 = ((iTemp4) ? fTemp2 : fTemp2 + fTemp3 * (1.0 - fConst0 / fTemp1));
-			output0[i0] = FAUSTFLOAT(0.1 * (2.0 * fRec1 + -1.0));
-			iVec1[1] = iVec1[0];
-			fRec3[1] = fRec3[0];
+			double fTemp0 = double(input1[i0]);
+			double fTemp1 = fSlow1 * fTemp0;
+			fVec0[IOTA0 & 16383] = fTemp1;
+			fVec1[IOTA0 & 16383] = fSlow0 * fRec0[1];
+			fRec0[0] = fSlow0 * fVec1[(IOTA0 - iSlow4) & 16383] + fVec0[(IOTA0 - iSlow3) & 16383];
+			double fTemp2 = double(input0[i0]);
+			double fTemp3 = fSlow1 * fTemp2;
+			fVec2[IOTA0 & 16383] = fTemp3;
+			fVec3[IOTA0 & 16383] = fSlow0 * fRec1[1];
+			fRec1[0] = fSlow0 * fVec3[(IOTA0 - iSlow4) & 16383] + fVec2[(IOTA0 - iSlow3) & 16383];
+			double fTemp4 = std::sqrt(fftfreeze_faustpower2_f(fTemp2) + fftfreeze_faustpower2_f(fTemp0));
+			double fTemp5 = std::max<double>(0.0, fSlow1 * fTemp4 + fSlow0 * (fTemp4 - fSlow5 * std::sqrt(fftfreeze_faustpower2_f(fRec1[0] + fTemp3) + fftfreeze_faustpower2_f(fRec0[0] + fTemp1))));
+			double fTemp6 = std::atan2(fTemp0, fTemp2);
+			output0[i0] = FAUSTFLOAT(std::cos(fTemp6) * fTemp5);
+			output1[i0] = FAUSTFLOAT(std::sin(fTemp6) * fTemp5);
+			output2[i0] = FAUSTFLOAT(double(input2[i0]));
+			IOTA0 = IOTA0 + 1;
 			fRec0[1] = fRec0[0];
+			fRec1[1] = fRec1[0];
 		}
 	}
 

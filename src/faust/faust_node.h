@@ -4,18 +4,20 @@
 /*
     Faust basic node (works with Faust C++ generated code following a simple architecture)
 */
+#define FAUSTFLOAT double
 
 #include "combinator3000.h"
 #include "asciiplotter/asciiplotter.h"
+#include "faust/gui/MapUI.h"
 
-#define FAUSTFLOAT double
 
 template<class P, typename Flt = double>
-struct faust_node : public node<Flt>
+struct faust_node : public node<Flt>, MapUI
 {
     faust_node(size_t blocsize = 128, size_t samplerate = 48000) 
         : node<Flt>::node(processor.getNumInputs(), processor.getNumOutputs(), blocsize, samplerate)
     {
+        processor.buildUserInterface(this);
         processor.init(this->sample_rate);
     }
     void process(node<Flt> *previous)
@@ -34,6 +36,11 @@ struct faust_node : public node<Flt>
         plot.legend();
         plot.show();
 #endif
+    }
+
+    void set_param()
+    {
+        
     }
 
     P processor;

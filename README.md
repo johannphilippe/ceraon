@@ -48,16 +48,16 @@ then the operation can happen. Else, it raises an error.
 - Graph : must have a buffer, and take output when the "process block" is ending (so that only need to pass graph as user data)
 - Bloc size adapter : useless. Any node could perfectly use a smaller bloc, and perform higher accuracy internally.
 
-- Add destructors everywhere 
 - Optimizations in general
   - The graph class must have some optim to do
   - A general memory pool to allocate buffers 
-- Blocsize adapter (without resampling)
+- Blocsize adapter (without resampling) - (?)
 - Thread safety and threading model 
   - Thread locks
   - Idea that several graphs could be used on separated threads to improve performance (taking advantage of several cores)
+- Prevent multiple identical connections (same node to same node) [and self connections ?, or enable feedback ?]
 
-- FFT node
+- FFT node 
 - Faust LLVM node
 - Csound node
 - Supercollider node 
