@@ -4,8 +4,10 @@
 #define FAUSTFLOAT double
 
 #include "combinator3000.h"
+
 #include "faust/dsp/libfaust.h"
 #include "faust/dsp/llvm-dsp.h"
+#include "faust/gui/MapUI.h"
 
 template<typename Flt = double>
 struct faust_jit_factory
@@ -16,14 +18,15 @@ struct faust_jit_factory
         deleteDSPFactory(m_factory);
     }
 
-    static faust_jit_factory *from_file(std::string path, std::vector<std::string> *opts = nullptr) {
-        faust_jit_factory *f = new faust_jit_factory();
+    static faust_jit_factory<Flt> *from_file(std::string path, std::vector<std::string> *opts = nullptr) {
+        faust_jit_factory *f = new faust_jit_factory<Flt>();
         std::string _err(faust_jit_factory::err);
         std::vector<const char*> argv = faust_jit_factory::parse_args(opts);
         f->m_factory = createDSPFactoryFromFile(path, argv.size()-1, argv.data(), "", _err, -1);
+        return f;
     }
-    static faust_jit_factory *from_string(std::string code, std::vector<std::string> *opts = nullptr) {
-        faust_jit_factory *f = new faust_jit_factory();
+    static faust_jit_factory<Flt> *from_string(std::string code, std::vector<std::string> *opts = nullptr) {
+        faust_jit_factory *f = new faust_jit_factory<Flt>();
         std::string _err(faust_jit_factory::err);
         std::vector<const char*> argv = faust_jit_factory::parse_args(opts);
         f->m_factory = createDSPFactoryFromString("faust", code, argv.size()-1, argv.data(), "", _err, -1);
@@ -40,7 +43,6 @@ struct faust_jit_factory
         argv.push_back(nullptr);
         return argv;
     }
-
 
     llvm_dsp_factory *m_factory;
     constexpr static const char *err = "Faust LLVM DSP Factory creation error";
@@ -84,5 +86,4 @@ struct faust_jit_node : public MapUI, public node<Flt>
 
     dsp *m_dsp;
 };
-
 #endif

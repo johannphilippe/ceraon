@@ -15,13 +15,12 @@ template<typename Flt = double>
 struct node
 {
     node(size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000);
-    ~node();
+    virtual ~node();
 
     bool connect(node *n);
     bool disconnect(node *n);
 
     virtual void process(node<Flt> *previous);
-    std::vector<node<Flt> *> *process_next();
 
     size_t n_inputs, n_outputs, bloc_size, sample_rate, n_nodes_in;
     std::vector<node *> connections;
@@ -40,9 +39,9 @@ struct channel_adapter : public node<Flt>
     It knows its number of 
 */
 template<typename Flt = double>
-struct mixer_node : public node<Flt>
+struct mixer : public node<Flt>
 {
-    mixer_node(size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000);
+    mixer(size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000);
     virtual void process(node<Flt> *previous) override;
 
     size_t process_count;
@@ -86,21 +85,6 @@ struct downsampler : public node<Flt>
     std::vector<half_cascade *>decimators;
 };
 
-/*
-template<typename Flt = double>
-struct graph
-{
-    // Graph can check whether all the nodes have correct samplerate etc 
-
-    graph(node<Flt> *n);
-    graph(std::vector<node<Flt> *> nodes);
-
-    void process_block();
-    node<Flt> *begin;
-    size_t bloc_size;
-};
-*/
-
 template<typename Flt = double>
 struct graph
 {
@@ -133,7 +117,7 @@ struct graph
         std::vector< node<Flt> *> *callee;
     };
 
-    void process_block()
+    void process_bloc()
     {
         grape_process_count = 0;
         // Push base nodes to the call list

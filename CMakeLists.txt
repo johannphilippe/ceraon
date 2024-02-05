@@ -30,7 +30,9 @@ if(BUILD_FFT_NODE)
       ./src/fft/AudioFFT/AudioFFT.cpp
       ./src/fft/fft_node.h)
       target_include_directories(fft_node PUBLIC ./src)
+      set_property(TARGET fft_node PROPERTY POSITION_INDEPENDENT_CODE ON)
       set(PLUGIN_NODES_LIB ${PLUGIN_NODES_LIB} fft_node)
+      add_compile_definitions(FFT_NODE)
 endif()
 
 if(BUILD_FAUST_JIT_NODE)
@@ -40,6 +42,7 @@ if(BUILD_FAUST_JIT_NODE)
       target_include_directories(faust_jit PUBLIC ./src)
       target_link_libraries(faust_jit PUBLIC faust)
       set(PLUGIN_NODES_LIB ${PLUGIN_NODES_LIB} faust_jit)
+      add_compile_definitions(FAUST_JIT_NODE)
 endif()
 
 if(BUILD_CSOUND_NODE)
@@ -50,6 +53,7 @@ if(BUILD_CSOUND_NODE)
       target_include_directories(csound_node PUBLIC ./src ${CSOUND_INCLUDE_DIRS})
       target_link_libraries(csound_node PUBLIC ${CSOUND_LIBRARIES})
       set(PLUGIN_NODES_LIB ${PLUGIN_NODES_LIB} csound_node)
+      add_compile_definitions(CSOUND_NODE)
 endif()
 
 #string(STRIP ${PLUGIN_NODES_LIB} PLUGIN_NODES_LIB)
@@ -66,6 +70,8 @@ set(COMBINATOR_SRC
     ./src/halfband/halfband.cpp
     ./src/halfband/halfband.h
     ./src/utilities.h
+    ./include/combinator3000_api.h
+    ./src/combinator3000_api.cpp
     )
 
 ## Library
@@ -74,6 +80,8 @@ add_library(combinator3000 SHARED
 
 target_link_libraries(combinator3000 PRIVATE pthread)
 target_link_libraries(combinator3000 PUBLIC ${PLUGIN_NODES_LIB})
+
+target_include_directories(combinator3000 PUBLIC ./include ./src)
 
 #############################################
 #    	Build Combinator 3000 tests

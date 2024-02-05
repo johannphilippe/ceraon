@@ -141,7 +141,7 @@ struct fft_node : public node<Flt>
 template<typename Flt = double >
 struct ifft_node : public node<Flt>
 {
-    ifft_node(size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000, size_t overlap = 2)
+    ifft_node(size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000)
         : node<Flt>::node(inp, outp, blocsize, samplerate)
         , ffts(inp)
     {

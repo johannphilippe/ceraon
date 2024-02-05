@@ -48,20 +48,23 @@ then the operation can happen. Else, it raises an error.
 - Graph : must have a buffer, and take output when the "process block" is ending (so that only need to pass graph as user data)
 - Bloc size adapter : useless. Any node could perfectly use a smaller bloc, and perform higher accuracy internally.
 
+- Move to shared pointer as soon as possible 
+
 - Optimizations in general
   - The graph class must have some optim to do
   - A general memory pool to allocate buffers 
+  - In the `graph::process_bloc` function, while performing, it could gather information on nodes to optimize (in realtime)
 - Blocsize adapter (without resampling) - (?)
 - Thread safety and threading model 
   - Thread locks
   - Idea that several graphs could be used on separated threads to improve performance (taking advantage of several cores)
 - Prevent multiple identical connections (same node to same node) [and self connections ?, or enable feedback ?]
 
-- FFT node 
-- Faust LLVM node
-- Csound node
-- Supercollider node 
+- Done - FFT node 
+- Done - Faust LLVM node
+- Done - Csound node -> Add from file constructor
+- Supercollider node  ? (not sure there is a public API to handle audio)
+- Convolution FIR Node (with overlap add) ? 
 - Base nodes (gain, fadein, fadeout etc)
 - RtAudio nodes
-- For RtAudio, FFT & Faust LLVM (Csound and SC too) try to put options to build it or not (not always needed)
 - API to create external nodes and build it (so API to link dynamik libraries at runtime)

@@ -1,8 +1,10 @@
 #ifndef CSOUND_NODE_H
 #define CSOUND_NODE_H
 
+#include<memory>
 #include "combinator3000.h"
 #include "csound/csound.hpp"
+#include "utilities.h"
 
 template<typename Flt = double>
 struct csound_node : public Csound, node<Flt>
@@ -12,6 +14,7 @@ struct csound_node : public Csound, node<Flt>
     {
         size_t err;
 
+        // For some reason, if Csound does not "compiles" with this parameters, it is impossible to override from API
         std::string base_csd = "sr = 48000 \nksmps=128\nnchnls=1\nnchnls_i=1\n0dbfs=1\n";
         err = this->CompileOrc(base_csd.c_str());
 
@@ -20,6 +23,7 @@ struct csound_node : public Csound, node<Flt>
             throw std::runtime_error("Csound compile with return code : " + std::to_string(err));
         this->SetHostImplementedAudioIO(1, 0);
 
+        // Make sure parameters are overridden
         _params = std::make_unique<CSOUND_PARAMS>(); 
         this->GetParams(_params.get());
         _params->ksmps_override = this->bloc_size;
@@ -27,14 +31,20 @@ struct csound_node : public Csound, node<Flt>
         _params->nchnls_override = this->n_outputs;
         _params->nchnls_i_override = this->n_inputs;
         this->SetParams(_params.get());
+
         std::cout << "override : " << _params->ksmps_override << std::endl;
 
         err = this->Start();
         if(err != 0)
             throw std::runtime_error("Csound error when starting : " + std::to_string(err));
         
-
         std::cout << "Csound is ready to perform " << std::endl;
+    }
+
+    static csound_node<Flt> *from_file(std::string path, size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000)
+    {
+        std::string csd_str = read_file(path);
+        return new csound_node<Flt>(csd_str, inp, outp, blocsize, samplerate);
     }
 
     void process(node<Flt> *previous)
@@ -66,6 +76,5 @@ struct csound_node : public Csound, node<Flt>
 
     std::unique_ptr<CSOUND_PARAMS> _params;
 };
-
 
 #endif

@@ -11,6 +11,7 @@
 #include "faust/tests/fftfreeze.hpp"
 #include "csound/csound_node.h"
 #include "fft/fft_node.h"
+#include "../../include/combinator3000_api.h"
 
 #include "sndfile.hh"
 
@@ -22,7 +23,7 @@ void simple_test()
 
     graph<double> g;
     g.add_node(o);
-    g.process_block();
+    g.process_bloc();
 }
 
 // Issue : 
@@ -33,7 +34,7 @@ void mix_test()
 
     faust_node<osc, double> *o1 = new faust_node<osc, double>();
     faust_node<square, double> *o2 = new faust_node<square, double>();
-    mixer_node<double> *m = new mixer_node<double>(1, 1);
+    mixer<double> *m = new mixer<double>(1, 1);
     faust_node<filter, double> *f = new faust_node<filter, double>();
 
     // First mix signals 
@@ -53,7 +54,7 @@ void mix_test()
     for(size_t i = 0; i < npasses; ++i) 
     {
         std::cout << "npasses : " << i << " / " << npasses << std::endl;
-        g.process_block();
+        g.process_bloc();
         outfile.writef(f->outputs[0], 128);
     }
     
@@ -76,7 +77,7 @@ void resampler_test()
 
     graph<double> g;
     g.add_node(o);
-    g.process_block();
+    g.process_bloc();
 
     // Buffer of 128 
     size_t dur = 10; // seconds 
@@ -85,7 +86,7 @@ void resampler_test()
     for(size_t i = 0; i < npasses; ++i) 
     {
         std::cout << "npasses : " << i << " / " << npasses << std::endl;
-        g.process_block();
+        g.process_bloc();
         upfile.writef(f->outputs[0], 256);
         downfile.writef(down->outputs[0], 128);
         tfile.writef(o->outputs[0], 128);
@@ -104,7 +105,7 @@ int rt_callback( void *outputBuffer, void *inputBuffer, unsigned int nBufferFram
          double streamTime, RtAudioStreamStatus status, void *userData )
 {
     std::cout << "callback " << std::endl;
-    g_ptr->process_block();
+    g_ptr->process_bloc();
     std::cout << "block processed " << std::endl;
     ::memcpy((double*)outputBuffer, f_ptr->outputs[0], sizeof(double) * f_ptr->bloc_size);
     return 0;
@@ -114,7 +115,7 @@ void rt_test()
 {
     faust_node<osc, double> *o1 = new faust_node<osc, double>();
     faust_node<square, double> *o2 = new faust_node<square, double>();
-    mixer_node<double> *m = new mixer_node<double>(1, 1);
+    mixer<double> *m = new mixer<double>(1, 1);
     faust_node<filter, double> *f = new faust_node<filter, double>();
     graph<double> g;
     o1->connect(m);
@@ -175,7 +176,7 @@ void simple_fft_test()
     size_t npasses = nsamps_total / 128;
     for(size_t i = 0; i < npasses; ++i)
     {
-        g.process_block();
+        g.process_bloc();
         wf.writef(_ifft->outputs[0], 128);
     }
 }
@@ -214,7 +215,7 @@ void fft_denoise_test()
             _delfft->setParamValue("freezeBtn", 1);
         } else 
             _delfft->setParamValue("freezeBtn", 0);
-        g.process_block();
+        g.process_bloc();
         wf.writef(down->outputs[0], 128);
     }
 }
@@ -238,7 +239,7 @@ void faust_jit_test()
     size_t npasses = nsamps_total / 128;
     for(size_t i = 0; i < npasses; ++i)
     {
-        g.process_block();
+        g.process_bloc();
         wf.writef(filt->outputs[0], 128);
     }
 }
@@ -253,10 +254,6 @@ void csound_faust_test()
     "<CsOptions>\n" \
     "</CsOptions>\n" \
     "<CsInstruments> \n" \
-        "sr = 44100 \n" \
-        "ksmps = 41 \n" \
-        "nchnls = 8 \n" \
-        "nchnls_i = 12 \n" \
     "instr 1 \n" \
         "ain = inch(1) \n" \
         "adel = abs(oscili:a(0.02, 0.5)) \n" \
@@ -292,9 +289,21 @@ void csound_faust_test()
     for(size_t i = 0; i < npasses; ++i)
     {
         std::cout << "bloc graph " << std::endl;
-        g.process_block();
+        g.process_bloc();
         wf.writef(csn->outputs[0], 128);
     }
+}
+
+
+/*
+    Test construct destruct
+*/
+void test_api()
+{
+    upsampler<double> *u = create_upsampler(1, 1, 512, 192000, 2, 10, 1);
+
+    std::cout << "upsampler ptr : " << u << std::endl;
+    delete_node((node<double> *) u);
 }
 
 int main()
@@ -307,5 +316,6 @@ int main()
     //fft_denoise_test();
     //faust_jit_test();
     csound_faust_test();
+    //test_api();
     return 0;
 }

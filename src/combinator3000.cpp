@@ -31,7 +31,8 @@ bool node<Flt>::connect(node<Flt> *n)
         n->n_nodes_in += 1;
         return true;
     } else { // if no input/output number match, we need an adapter node 
-        channel_adapter<Flt> *a = new channel_adapter<Flt>(this->n_outputs, n->n_inputs);
+        channel_adapter<Flt> *a = 
+            new channel_adapter<Flt>(this->n_outputs, n->n_inputs);
         connections.push_back(a);
         a->n_nodes_in += 1;
         a->connect(n);
@@ -66,16 +67,6 @@ void node<Flt>::process(node<Flt> *previous)
     }
 }
 
-template<typename Flt>
-std::vector<node<Flt>*>* node<Flt>::process_next()
-{
-    // Processing next nodes
-    for(auto & it : connections)
-        it->process(this);
-
-    return &connections;
-}
-
 template class node<double>;
 template class node<float>;
 
@@ -83,9 +74,11 @@ template<typename Flt>
 channel_adapter<Flt>::channel_adapter(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     : node<Flt>::node(inp, outp, blocsize, samplerate)
 {
-    size_t valid = std::max(this->n_inputs, this->n_outputs) % std::min(this->n_inputs, this->n_outputs);
+    size_t valid = std::max(this->n_inputs, this->n_outputs) 
+            % std::min(this->n_inputs, this->n_outputs);
     if(valid != 0)
-        throw std::runtime_error("Error in channel adapter - outputs must be even divisor of inputs. Here" 
+        throw std::runtime_error(
+                "Error in channel adapter - outputs must be even divisor of inputs. Here" 
             + std::to_string(this->n_inputs) + " " 
             + std::to_string(this->n_outputs));
 }
@@ -153,13 +146,13 @@ template class channel_adapter<float>;
 
 
 template<typename Flt>
-mixer_node<Flt>::mixer_node(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
+mixer<Flt>::mixer(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     : node<Flt>::node(inp, outp, blocsize, samplerate)
     , process_count(0)
 {}
 
 template<typename Flt>
-void mixer_node<Flt>::process(node<Flt> *previous)
+void mixer<Flt>::process(node<Flt> *previous)
 {
     if(this->n_nodes_in == 0) {
         throw std::runtime_error("Mixer node must have at least one input (ideally two or more, it is a mixer)");
@@ -190,8 +183,8 @@ void mixer_node<Flt>::process(node<Flt> *previous)
 #endif
 }
 
-template class mixer_node<double>;
-template class mixer_node<float>;
+template class mixer<double>;
+template class mixer<float>;
 
 template<typename Flt>
 simple_upsampler<Flt>::simple_upsampler(size_t inp, size_t outp, size_t blocsize, size_t samplerate, size_t order, size_t steep)
