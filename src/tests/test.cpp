@@ -404,6 +404,7 @@ int main()
     //csound_faust_test();
     //test_api();
     //test_rtgraph();
+    //test_complex_graph();
     test_complex_graph2();
     return 0;
 }

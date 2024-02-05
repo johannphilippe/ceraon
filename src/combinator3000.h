@@ -135,6 +135,7 @@ struct graph
     graph(size_t inp = 0, size_t outp = 1, size_t blocsize = 128, size_t samplerate = 48000);
     // Safe
     void add_node(node<Flt> *n);
+    void add_nodes(std::vector<node<Flt>*> n);
     void remove_node(node<Flt> *n);
     // Unsafe (it is automatically handled in add_node and remove_node)
     void add_output(node<Flt> *o);
@@ -146,24 +147,28 @@ struct graph
 
     size_t n_inputs, n_outputs, bloc_size, sample_rate;
     std::vector<node<Flt>*> nodes;
+
     std::vector<call_grape> to_call, next_call;
     std::vector<call_grape> *to_call_ptr, *next_call_ptr;
-    size_t grape_process_count;
+
     std::unique_ptr<mixer<Flt>> _mix;
     std::unique_ptr<node<Flt>> _input_node;
+
     std::recursive_mutex _mtx;
 protected:
 
-    void _generate_event_list();
-    void _generate_event_list_internal();
-    void _remove_duplicates();
     std::vector<call_event> call_list;
+    void _generate_event_list();
+    void _remove_duplicates();
 
-    void _generate_patchbook_code( std::string &s, std::vector<call_grape> *sto_call, std::vector<call_grape> *snext_call);
+    void _generate_patchbook_code( std::string &s);
+    
     bool has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v, std::vector<call_grape> *ptr1, std::vector<call_grape> *ptr2);
+    
     void _find_and_remove_out(node<Flt> *n);
     void _find_and_add_out(node<Flt> * n);
     void _rm_node(node<Flt> *n);
+
     void _process_grape();
 };
 

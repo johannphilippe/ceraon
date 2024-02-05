@@ -38,16 +38,18 @@ struct name_gen
 {
     static std::string gen()
     {
-        std::vector<std::string> names = {
+        const std::vector<std::string> names = {
             "flower", "sky", "gear", "shaker", "kitty", "communist", "frog", "sword", "fog", 
             "chocolate", "queen", "intention", "tooth", "knowledge", "virus", "failure", "cookie", "anxiety", 
-            "attitude", "feedback", "signifiance", "monk", "pizza", "supermarket"
+            "attitude", "feedback", "signifiance", "monk", "pizza", "mojo", "splash", "pineapple", 
+            "spleen", "routine", "night", "morning", "edge", "candy", "famine"
         };
 
-        std::vector<std::string> adjectives = {
+        const std::vector<std::string> adjectives = {
             "hardcode", "cute", "damaged", "majestic", "majestic", 
             "dusty", "lonely", "scared", "thirsty", "attractive", 
-            "mighty", "cool", "orange", "abrasive", "satisfying", "greedy", "lame", "popular", "fuzzy"
+            "mighty", "cool", "orange", "abrasive", "satisfying", "greedy", "lame", "popular", "fuzzy",
+            "rusty", "crispy", "curious",  "sweet", "fancy"
         };
 
 

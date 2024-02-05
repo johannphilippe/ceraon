@@ -324,6 +324,7 @@ graph<Flt>::graph(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
 {
     to_call.reserve(128);
     next_call.reserve(128);
+    call_list.reserve(256);
     _mix = std::make_unique<mixer<Flt> >(outp, outp, blocsize, samplerate); 
     _input_node = std::make_unique<node<Flt>>(inp, inp, blocsize, samplerate);
 
@@ -334,14 +335,20 @@ graph<Flt>::graph(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
 template<typename Flt>
 void graph<Flt>::process_bloc()
 {
+    /*
     std::lock_guard<std::recursive_mutex> lock(_mtx);
-    grape_process_count = 0;
     // Push base nodes to the call list
     node<Flt> *ptr = (_input_node->n_inputs > 0) ? _input_node.get() : nullptr;
     next_call.push_back({ptr, &nodes});
     to_call_ptr = &to_call;
     next_call_ptr = &next_call;
     _process_grape();
+    */
+
+    for(size_t i = 0; i < call_list.size(); ++i)
+    {
+        call_list[i].callee->process(call_list[i].caller);
+    }
 }
 
 template<typename Flt>
@@ -350,6 +357,17 @@ void graph<Flt>::add_node(node<Flt> *n)
     std::lock_guard<std::recursive_mutex> lock(_mtx);
     nodes.push_back(n);
     _find_and_add_out(n);
+    _generate_event_list();
+}
+
+template<typename Flt>
+void graph<Flt>::add_nodes(std::vector<node<Flt>*> n)
+{
+    std::lock_guard<std::recursive_mutex> lock(_mtx);
+    nodes.insert(nodes.end(), n.begin(), n.end());
+    for(auto & it : n)
+        _find_and_add_out(it);
+    _generate_event_list();
 }
 
 template<typename Flt>
@@ -358,6 +376,7 @@ void graph<Flt>::remove_node(node<Flt> *n)
     std::lock_guard<std::recursive_mutex> lock(_mtx);
     _find_and_remove_out(n);
     _rm_node(n);
+    _generate_event_list();
     return;
 }
 
@@ -378,51 +397,29 @@ void graph<Flt>::remove_output(node<Flt> *o)
 template<typename Flt>
 std::string graph<Flt>::generate_patchbook_code()
 {
-    node<Flt> *ptr = (_input_node->n_inputs > 0) ? _input_node.get() : nullptr;
-    std::vector<call_grape> sto_call, snext_call;
-    
-    for(size_t i = 0; i < nodes.size(); ++i)
-    {
-        sto_call.push_back({nodes[i], &nodes[i]->connections});
-    }
-    //sto_call.push_back({ptr, &nodes});
-
     std::string code("");
-    _generate_patchbook_code(code, &sto_call, &snext_call);
+    _generate_patchbook_code(code);
     return code;
 }
 
 template<typename Flt>
-void graph<Flt>::_generate_patchbook_code(std::string &c, std::vector<call_grape> *sto_call, 
-        std::vector<call_grape> *snext_call )
+void graph<Flt>::_generate_patchbook_code(std::string &c)
 {
-    snext_call->clear();
-    if(sto_call->size() == 0) 
-        return;
-    for(size_t i = 0; i < sto_call->size(); ++i)
+    for(auto & it : call_list)
     {
-        node<Flt> *caller = sto_call->at(i).caller; // nullptr at first pass
-        for(size_t j = 0; j < sto_call->at(i).callee->size(); ++j)
-        { 
-            std::vector<node<Flt> *> *nxt = &(sto_call->at(i).callee->at(j)->connections);
-            // And for each returned connections, (next called events), we add an element in next_call_ptr
-            //if(!has_same_call(sto_call->at(i).callee->at(j), nxt, sto_call, snext_call))
-                for(size_t ch = 0; ch < caller->n_outputs; ++ch) {
-                    std::string s = "- " + caller->get_name() 
-                        + " (Out" + std::to_string(ch) + ") >> " 
-                        + sto_call->at(i).callee->at(j)->get_name() 
-                        + "(In" + std::to_string(ch) + ")\n";
-                    c += s;
-                }
-            if(!has_same_call(sto_call->at(i).callee->at(j), nxt, sto_call, snext_call))
-            {
-                snext_call->push_back({sto_call->at(i).callee->at(j), nxt});
-            } 
-        }
-    }
-    this->_generate_patchbook_code(c, snext_call, sto_call);
-}
+        if(it.caller == nullptr)
+            continue;
 
+            for(size_t ch = 0; ch < it.caller->n_outputs; ++ch) 
+            {
+                std::string s = "- " + it.caller->get_name() 
+                    + " (Out" + std::to_string(ch) + ") >> " 
+                    + it.callee->get_name() 
+                    + "(In" + std::to_string(ch) + ")\n";
+                c += s;
+            }
+    }
+}
 
 template<typename Flt>
 bool graph<Flt>::has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v,   
@@ -498,23 +495,53 @@ void graph<Flt>::_process_grape()
     next_call_ptr->clear();
     if(to_call_ptr->size() == 0) 
     {
-        // End of block
         return;
     }
     for(size_t i = 0; i < to_call_ptr->size(); ++i)
     {
         node<Flt> *caller = to_call_ptr->at(i).caller; // nullptr at first pass
+
         for(size_t j = 0; j < to_call_ptr->at(i).callee->size(); ++j)
         { 
-            to_call_ptr->at(i).callee->at(j)->process(caller);
+            call_list.push_back({caller, to_call_ptr->at(i).callee->at(j)});
             std::vector<node<Flt> *> *nxt = &(to_call_ptr->at(i).callee->at(j)->connections);
-            // And for each returned connections, (next called events), we add an element in next_call_ptr
-            if(!has_same_call(to_call_ptr->at(i).callee->at(j), nxt, to_call_ptr, next_call_ptr))
-                next_call_ptr->push_back({to_call_ptr->at(i).callee->at(j), nxt});
+            next_call_ptr->push_back({to_call_ptr->at(i).callee->at(j), nxt});
         }
     }
-    grape_process_count++;
     this->_process_grape();
+}
+
+template<typename Flt>
+void graph<Flt>::_remove_duplicates()
+{
+    std::vector<int> to_erase(32);
+    for(size_t i = 0; i < call_list.size(); ++i)
+    {
+        for(size_t j = 0; j < call_list.size(); ++j)
+        {
+            if(j == i)
+                continue;
+            if(call_list[i].caller == call_list[j].caller 
+                && call_list[i].callee == call_list[j].callee)
+            {
+                call_list.erase(call_list.begin() + j);
+                --j;
+            }
+        }
+    }
+}
+
+template<typename Flt>
+void graph<Flt>::_generate_event_list()
+{
+    std::lock_guard<std::recursive_mutex> lock(_mtx);
+    call_list.clear();
+    node<Flt> *ptr = (_input_node->n_inputs > 0) ? _input_node.get() : nullptr;
+    next_call.push_back({ptr, &nodes});
+    to_call_ptr = &to_call;
+    next_call_ptr = &next_call;
+    _process_grape();
+    _remove_duplicates();
 }
 
 /*
