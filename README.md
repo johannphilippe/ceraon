@@ -49,6 +49,7 @@ then the operation can happen. Else, it raises an error.
 - Bloc size adapter : useless. Any node could perfectly use a smaller bloc, and perform higher accuracy internally.
 
 - Move to shared pointer as soon as possible 
+- Graph drawing (patchbook, graphviz, or similar)
 
 - Optimizations in general
   - The graph class must have some optim to do

@@ -5,6 +5,8 @@
 
 #include<iostream>
 #include<vector>
+#include<mutex>
+#include<memory>
 #include"halfband/halfband.h"
 #include"asciiplotter/asciiplotter.h"
 /*
@@ -85,16 +87,12 @@ struct downsampler : public node<Flt>
     std::vector<half_cascade *>decimators;
 };
 
-template<typename Flt = double>
-struct graph
-{
-    graph() 
-    {}
+/*
+    Graph 
+    - Handles pointer to the starting nodes of one or several node chains 
+    - Is passed to RtAudio engine to be called inside callback
+*/
 
-    void add_node(node<Flt> *n)
-    {
-        nodes.push_back(n);
-    }
 
     /*
         Complexity here is to call parallel before to call sequential (for the case of mixer node )
@@ -111,66 +109,69 @@ struct graph
                         -> ... 
         At each sequential step, each grape can subdivide in several grapes
     */
+
+// Todo : handle the case where first nodes are actually effects (they are called with inputs)
+// Idea : * Add inp param, and take a basic "node" internally that takes input from rtengine and be previous call of  first nodes
+
+template<typename Flt = double>
+struct graph
+{
     struct call_grape
     {
         node<Flt> *caller;
         std::vector< node<Flt> *> *callee;
     };
 
-    void process_bloc()
-    {
-        grape_process_count = 0;
-        // Push base nodes to the call list
-        next_call.push_back({nullptr, &nodes});
-        to_call_ptr = &to_call;
-        next_call_ptr = &next_call;
-        _process_grape();
-    }
+    graph(size_t inp = 0, size_t outp = 1, size_t blocsize = 128, size_t samplerate = 48000);
+    // Safe
+    void add_node(node<Flt> *n);
+    void remove_node(node<Flt> *n);
+    // Unsafe (it is automatically handled in add_node and remove_node)
+    void add_output(node<Flt> *o);
+    void remove_output(node<Flt> *o);
 
+    void process_bloc();
+
+
+    size_t n_inputs, n_outputs, bloc_size, sample_rate;
     std::vector<node<Flt>*> nodes;
     std::vector<call_grape> to_call, next_call;
     std::vector<call_grape> *to_call_ptr, *next_call_ptr;
-
     size_t grape_process_count;
-private:
+    std::unique_ptr<mixer<Flt>> _mix;
+    std::unique_ptr<node<Flt>> _input_node;
+    std::recursive_mutex _mtx;
+protected:
 
-    bool has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v)
-    {
-        for(size_t i = 0; i < next_call_ptr->size(); ++i)
-        {
-            if(next_call_ptr->at(i).caller == n && next_call_ptr->at(i).callee == v)
-                return true;
-        }
-        return false;
-    }
-    void _process_grape()
-    {
-        std::swap(to_call_ptr, next_call_ptr);
-        next_call_ptr->clear();
-        if(to_call_ptr->size() == 0) 
-        {
-            // End of block
-            // Copy outputs of last nodes to graph outputs and exit
-            return;
-        }
-        for(size_t i = 0; i < to_call_ptr->size(); ++i)
-        {
-            node<Flt> *caller = to_call_ptr->at(i).caller; // nullptr at first pass
-            for(size_t j = 0; j < to_call_ptr->at(i).callee->size(); ++j)
-            { 
-                to_call_ptr->at(i).callee->at(j)->process(caller);
-                std::vector<node<Flt> *> *nxt = &(to_call_ptr->at(i).callee->at(j)->connections);
-                // And for each returned connections, (next called events), we add an element in next_call_ptr
-                if(!has_same_call(to_call_ptr->at(i).callee->at(j), nxt))
-                    next_call_ptr->push_back({to_call_ptr->at(i).callee->at(j), nxt});
-            }
-        }
-        grape_process_count++;
-        this->_process_grape();
-    }
+    bool has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v);
+    void _find_and_remove_out(node<Flt> *n);
+    void _find_and_add_out(node<Flt> * n);
+    void _rm_node(node<Flt> *n);
+    void _process_grape();
 };
 
 template class graph<double>;
 template class graph<float>;
+
+#include "rtaudio/RtAudio.h"
+
+static int rtgraph_callback(void *out_buffer, void *in_buffer, unsigned int nframes, double stream_time, RtAudioStreamStatus status, void *user_data);
+
+template<typename Flt>
+struct rtgraph : public graph<Flt>
+{
+    rtgraph(size_t inp = 1, size_t outp = 1, size_t blocsize = 128, size_t samplerate = 48000);
+
+    void openstream();
+
+    void list_devices();
+    void set_devices(unsigned int input_device, unsigned int output_device);
+
+    RtAudio dac;
+    RtAudio::StreamParameters output_parameters, input_parameters;
+    std::unique_ptr<RtAudio::StreamOptions> _options;
+};
+
+template class rtgraph<double>;
 
 #endif

@@ -63,7 +63,8 @@ void node<Flt>::process(node<Flt> *previous)
     {
         // Copying inputs to outputs (input is the output of previous node)
         for(size_t ch = 0; ch < previous->n_outputs; ++ch)
-            ::memcpy(outputs[ch], previous->outputs[ch], sizeof(Flt) * previous->bloc_size);
+            std::copy(previous->outputs[ch], previous->outputs[ch] + previous->bloc_size, this->outputs[ch]);
+            //::memcpy(outputs[ch], previous->outputs[ch], sizeof(Flt) * previous->bloc_size);
     }
 }
 
@@ -109,9 +110,7 @@ void channel_adapter<Flt>::process(node<Flt> *previous)
     } else if(this->n_inputs == 1)
     {
         for(size_t ch = 0; ch < this->n_outputs; ++ch)
-        {
-            ::memcpy(this->outputs[ch], previous->outputs[0], this->bloc_size * sizeof(Flt));
-        }
+            std::copy(previous->outputs[0], previous->outputs[0] + this->bloc_size, this->outputs[ch]);
     } else { // need to check if % is 0
         if(this->n_inputs > this->n_outputs && (this->n_inputs % this->n_outputs) == 0 )  
         {
@@ -132,7 +131,7 @@ void channel_adapter<Flt>::process(node<Flt> *previous)
             for(size_t o = 0; o < this->n_outputs; ++o)
             {
                 size_t i = o % this->n_inputs;
-                ::memcpy(this->outputs[o], previous->outputs[i], this->bloc_size * sizeof(Flt));
+                std::copy(previous->outputs[i], previous->outputs[i] + this->bloc_size, this->outputs[o]);
             }
         }
     }
@@ -254,7 +253,8 @@ void upsampler<Flt>::process(node<Flt> *previous)
         p = upsamplers[i];
     }
     for(size_t ch = 0; ch < this->n_outputs; ++ch)
-        ::memcpy(this->outputs[ch], p->outputs[ch], this->bloc_size * sizeof(Flt));
+        std::copy(p->outputs[ch], p->outputs[ch] + this->bloc_size, this->outputs[ch]);
+        //::memcpy(this->outputs[ch], p->outputs[ch], this->bloc_size * sizeof(Flt));
 }
 
 template class upsampler<double>;
@@ -294,3 +294,235 @@ void downsampler<Flt>::process(node<Flt> *previous)
 
 template class downsampler<double>;
 
+/*
+    Graph methods
+*/
+
+template<typename Flt>
+graph<Flt>::graph(size_t inp, size_t outp, size_t blocsize, size_t samplerate) 
+    : n_inputs(inp)
+    , n_outputs(outp)
+    , bloc_size(blocsize)
+    , sample_rate(samplerate)
+{
+    to_call.reserve(128);
+    next_call.reserve(128);
+    _mix = std::make_unique<mixer<Flt> >(outp, outp, blocsize, samplerate); 
+    _input_node = std::make_unique<node<Flt>>(inp, inp, blocsize, samplerate);
+}
+
+template<typename Flt>
+void graph<Flt>::process_bloc()
+{
+    std::lock_guard<std::recursive_mutex> lock(_mtx);
+    grape_process_count = 0;
+    // Push base nodes to the call list
+    node<Flt> *ptr = (_input_node->n_inputs > 0) ? _input_node.get() : nullptr;
+    next_call.push_back({ptr, &nodes});
+    to_call_ptr = &to_call;
+    next_call_ptr = &next_call;
+    _process_grape();
+}
+
+template<typename Flt>
+void graph<Flt>::add_node(node<Flt> *n)
+{
+    std::lock_guard<std::recursive_mutex> lock(_mtx);
+    nodes.push_back(n);
+    _find_and_add_out(n);
+}
+
+template<typename Flt>
+void graph<Flt>::remove_node(node<Flt> *n)
+{
+    std::lock_guard<std::recursive_mutex> lock(_mtx);
+    _find_and_remove_out(n);
+    _rm_node(n);
+    return;
+}
+
+template<typename Flt>
+void graph<Flt>::add_output(node<Flt> *o)
+{
+    std::lock_guard<std::recursive_mutex> lock(_mtx);
+    o->connect(_mix.get());
+}
+
+template<typename Flt>
+void graph<Flt>::remove_output(node<Flt> *o)
+{
+    std::lock_guard<std::recursive_mutex> lock(_mtx);
+    o->disconnect(_mix.get());
+}
+
+template<typename Flt>
+bool graph<Flt>::has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v)
+{
+    for(size_t i = 0; i < next_call_ptr->size(); ++i)
+    {
+        if(next_call_ptr->at(i).caller == n && next_call_ptr->at(i).callee == v)
+            return true;
+    }
+    return false;
+}
+
+template<typename Flt>
+void graph<Flt>::_find_and_remove_out(node<Flt> *n)
+{
+    std::vector<node<Flt> *> *_iter_list = &n->connections;
+    for(size_t i = 0; i < _iter_list->size(); ++i)
+    {
+        if(_iter_list->at(i) == _mix.get()) 
+        {
+            _iter_list->at(i)->disconnect(_mix.get());
+        } else if(_iter_list->at(i)->connections.size() > 0) 
+        {
+            _find_and_remove_out(_iter_list->at(i));
+        }
+    }
+}
+
+template<typename Flt>
+void graph<Flt>::_find_and_add_out(node<Flt> * n)
+{
+    std::vector<node<Flt> *> *_iter_list = &n->connections;
+    for(size_t i = 0; i < _iter_list->size(); ++i)
+    {
+        if(_iter_list->at(i)->connections.size() == 0)  // End of chain
+        {
+            _iter_list->at(i)->connect(_mix.get());
+        } else 
+        {
+            bool found = false;
+            for(size_t n = 0; n < _iter_list->at(i)->connections.size(); ++n)
+            {
+                if(_iter_list->at(i)->connections[n] == _mix.get())
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if(!found)
+                _find_and_add_out(_iter_list->at(i));
+        }
+    }
+}
+
+template<typename Flt>
+void graph<Flt>::_rm_node(node<Flt> *n)
+{
+    for(size_t i = 0; i < nodes.size(); ++i)
+    {
+        if(n == nodes[i])
+        {
+            nodes.erase(nodes.begin() + i);
+            return;
+        }   
+    }
+}
+
+template<typename Flt>
+void graph<Flt>::_process_grape()
+{
+    std::swap(to_call_ptr, next_call_ptr);
+    next_call_ptr->clear();
+    if(to_call_ptr->size() == 0) 
+    {
+        // End of block
+        return;
+    }
+    for(size_t i = 0; i < to_call_ptr->size(); ++i)
+    {
+        node<Flt> *caller = to_call_ptr->at(i).caller; // nullptr at first pass
+        for(size_t j = 0; j < to_call_ptr->at(i).callee->size(); ++j)
+        { 
+            to_call_ptr->at(i).callee->at(j)->process(caller);
+            std::vector<node<Flt> *> *nxt = &(to_call_ptr->at(i).callee->at(j)->connections);
+            // And for each returned connections, (next called events), we add an element in next_call_ptr
+            if(!has_same_call(to_call_ptr->at(i).callee->at(j), nxt))
+                next_call_ptr->push_back({to_call_ptr->at(i).callee->at(j), nxt});
+        }
+    }
+    grape_process_count++;
+    this->_process_grape();
+}
+
+/*
+    Rtgraph engine
+*/
+
+template<typename Flt>
+rtgraph<Flt>::rtgraph(size_t inp, size_t outp, size_t blocsize, size_t  samplerate)
+    : graph<Flt>::graph(inp, outp, blocsize, samplerate)
+{
+    output_parameters.nChannels = this->n_outputs;
+    output_parameters.firstChannel = 0;
+    output_parameters.deviceId = dac.getDefaultOutputDevice();
+    input_parameters.nChannels = this->n_inputs;
+    input_parameters.firstChannel = 0;
+    input_parameters.deviceId = dac.getDefaultInputDevice();
+    _options = std::make_unique<RtAudio::StreamOptions>();
+    _options.get()->flags = RTAUDIO_NONINTERLEAVED | RTAUDIO_MINIMIZE_LATENCY | RTAUDIO_SCHEDULE_REALTIME;
+    _options.get()->priority = 99;
+}
+
+template<typename Flt>
+void rtgraph<Flt>::list_devices()
+{
+    std::vector<unsigned int> ids = dac.getDeviceIds();
+    RtAudio::DeviceInfo info;
+    for(auto & it : ids)
+    {
+        info = dac.getDeviceInfo(it);
+        std::cout << it << " - " << info.name << std::endl;
+        std::cout << "\tID : " << info.ID << std::endl;
+        std::cout << "\tinputs : " << info.inputChannels << std::endl;
+        std::cout << "\toutputs : " << info.outputChannels << std::endl;
+        std::cout << "\tpreferred SR : " << info.preferredSampleRate << std::endl;
+    }
+}
+
+template<typename Flt>
+void rtgraph<Flt>::set_devices(unsigned int input_device, unsigned int output_device)
+{
+    input_parameters.deviceId = input_device;
+    output_parameters.deviceId = output_device;
+}
+
+
+template<typename Flt>
+void rtgraph<Flt>::openstream()
+{
+    if(dac.isStreamOpen())
+    {
+        std::cout << "Stream is already open" << std::endl;
+        return;
+    }
+    RtAudio::StreamParameters *in_param_ptr = (this->n_inputs > 0) ? (&input_parameters) : nullptr;
+    dac.openStream(&output_parameters, in_param_ptr, RTAUDIO_FLOAT64, 
+            (unsigned int)this->sample_rate, (unsigned int *)&this->bloc_size, 
+            &rtgraph_callback, (void *)this, _options.get());
+    dac.startStream();
+}
+
+int rtgraph_callback(void *out_buffer, void *in_buffer, 
+        unsigned int nframes, double stream_time, RtAudioStreamStatus status, void *user_data)
+{
+    rtgraph<double> *_graph = (rtgraph<double> *)user_data;
+    std::lock_guard<std::recursive_mutex> lock(_graph->_mtx);
+    double *inputs = (double *)in_buffer;
+    double *outputs = (double *) out_buffer;
+
+    for(size_t i = 0; i < _graph->n_inputs; ++i)
+    {
+        size_t offset = _graph->bloc_size * i;
+        std::copy(inputs+offset, inputs+offset + nframes, _graph->_input_node->outputs[i]);
+    }
+    _graph->process_bloc();
+    for(size_t o = 0; o < _graph->n_outputs; ++o)
+    {
+        size_t offset = _graph->bloc_size * o;
+        std::copy(_graph->_mix->outputs[o],  _graph->_mix->outputs[o] + _graph->bloc_size, outputs + offset);
+    }
+    return 0;
+}

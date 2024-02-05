@@ -269,18 +269,12 @@ void csound_faust_test()
     "</CsoundSynthesizer> \n";
     std::cout << csd << std::endl;
     csound_node<double> *csn = new csound_node<double>(csd, 1, 1, 128, 48000);
-
-    std::cout << "faust inout " <<  fdsp->n_inputs << " & " << fdsp->n_outputs << std::endl;
-
-    std::cout << "connecting " << std::endl;
+    fdsp->setParamValue("freq", 100);
 
     fdsp->connect(csn);
 
-    std::cout << "connected " << std::endl;
     graph<> g;
     g.add_node(fdsp);
-
-    std::cout << "added to graph " << std::endl;
 
     SndfileHandle wf("/home/johann/Documents/tmp/csound_faust_jit.wav", SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_PCM_24, 1, 48000);
     size_t dur = 10; // seconds 
@@ -288,7 +282,6 @@ void csound_faust_test()
     size_t npasses = nsamps_total / 128;
     for(size_t i = 0; i < npasses; ++i)
     {
-        std::cout << "bloc graph " << std::endl;
         g.process_bloc();
         wf.writef(csn->outputs[0], 128);
     }
@@ -306,6 +299,31 @@ void test_api()
     delete_node((node<double> *) u);
 }
 
+void test_rtgraph()
+{
+    faust_node<osc, double> *o1 = new faust_node<osc, double>();
+    faust_node<square, double> *o2 = new faust_node<square, double>();
+    mixer<double> *m = new mixer<double>(1, 1);
+    faust_node<filter, double> *f = new faust_node<filter, double>();
+
+    o1->connect(m);
+    o2->connect(m);
+    m->connect(f);
+
+    rtgraph<double> g(0, 1, 128, 48000);
+    g.list_devices();
+    //g.set_devices(130, 130);
+    g.add_node(o1);
+    g.add_node(o2);
+    //g.add_output(f);
+    g.openstream();
+
+    while(true) 
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+}
+
 int main()
 {
     //simple_test();
@@ -315,7 +333,8 @@ int main()
     //simple_fft_test();
     //fft_denoise_test();
     //faust_jit_test();
-    csound_faust_test();
+    //csound_faust_test();
     //test_api();
+    test_rtgraph();
     return 0;
 }

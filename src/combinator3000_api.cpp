@@ -27,9 +27,9 @@ downsampler<double> *create_downsampler(size_t inp, size_t outp, size_t blocsize
     return new downsampler<double>(inp, outp, blocsize, samplerate, num_cascade, order, steep);    
 }
 
-graph<double> *create_graph()
+graph<double> *create_graph(size_t outp, size_t blocsize, size_t samplerate)
 {
-    return new graph<double>();
+    return new graph<double>(outp, blocsize, samplerate);
 }
 
 #ifdef FFT_NODE

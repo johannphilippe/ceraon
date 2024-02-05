@@ -30,7 +30,9 @@ downsampler<double> *create_downsampler(
         size_t num_cascade = 1, size_t order = 10, size_t steep = 1
     );
 
-graph<double> *create_graph();
+graph<double> *create_graph(
+        size_t num_outputs = 1, size_t blocsize = 128, size_t samplerate = 48000
+    );
 
 /*
     Plugin nodes - only enabled if compiled (see CMake options)
