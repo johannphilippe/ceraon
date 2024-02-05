@@ -27,9 +27,14 @@ downsampler<double> *create_downsampler(size_t inp, size_t outp, size_t blocsize
     return new downsampler<double>(inp, outp, blocsize, samplerate, num_cascade, order, steep);    
 }
 
-graph<double> *create_graph(size_t outp, size_t blocsize, size_t samplerate)
+graph<double> *create_graph(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
 {
-    return new graph<double>(outp, blocsize, samplerate);
+    return new graph<double>(inp, outp, blocsize, samplerate);
+}
+
+rtgraph<double> *create_rtgraph(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
+{
+    return new rtgraph<double>(inp, outp, blocsize, samplerate);
 }
 
 #ifdef FFT_NODE
@@ -87,9 +92,9 @@ void *create_faust_jit_factory_from_file(const char *path)
 {
     return (void *)faust_jit_factory<double>::from_file(path);
 }
-void *create_faust_jit_factory_from_string(const char *dsp_str)
+void *create_faust_jit_factory_from_string(const char *dsp_str, const char *dsp_name)
 {
-    return (void *)faust_jit_factory<double>::from_string(dsp_str);
+    return (void *)faust_jit_factory<double>::from_string(dsp_str, dsp_name);
 }
 
 void delete_faust_jit_factory(void *f)
@@ -107,7 +112,7 @@ void *create_faust_jit_factory_from_file(const char *path)
     throw std::runtime_error("Faust JIT node is not enabled");
     return (void *)nullptr;
 }
-void *create_faust_jit_factory_from_string(const char *dsp_str)
+void *create_faust_jit_factory_from_string(const char *dsp_str, const char *dsp_name)
 {
     throw std::runtime_error("Faust JIT node is not enabled");
     return (void *)nullptr;
@@ -125,38 +130,72 @@ node<double> *create_faust_jit_node(void *factory, size_t blocsize, size_t sampl
 }
 #endif
 
-void delete_node(node<double> *n)
+void delete_node(node<double> *n) {delete n;}
+void delete_graph(graph<double> *g) {delete g;}
+
+bool node_connect(node<double> *a, node<double> *b) {return a->connect(b);}
+bool node_disconnect(node<double> *a, node<double> *b) {return a->disconnect(b);}
+void node_process(node<double> *n, node<double> *previous) {n->process(previous);}
+
+void csound_node_set_channel(void *cs_ptr, const char *name, double value)
 {
-    delete n;
+#ifdef CSOUND_NODE 
+    ((csound_node<double> *) cs_ptr)->SetChannel(name, value);
+#endif
 }
 
-void delete_graph(graph<double> *g)
+double csound_node_get_channel(void *cs_ptr, const char *name)
 {
-    delete g;
+
+#ifdef CSOUND_NODE 
+    return ((csound_node<double> *) cs_ptr)->GetChannel(name);
+#else 
+    throw std::runtime_error("Csound Node is not enabled");
+    return 0;
+#endif
 }
 
-bool node_connect(node<double> *a, node<double> *b)
+void csound_node_compile_score(void *cs_ptr, const char *score)
 {
-    return a->connect(b);
+#ifdef CSOUND_NODE 
+    ((csound_node<double> *)cs_ptr)->ReadScore(score);
+#endif
 }
 
-bool node_disconnect(node<double> *a, node<double> *b)
+void csound_node_compile_orc(void *cs_ptr, const char *orc)
 {
-    return a->disconnect(b);
+#ifdef CSOUND_NODE 
+    ((csound_node<double> *)cs_ptr)->CompileOrc(orc);
+#endif
 }
 
-void node_process(node<double> *n, node<double> *previous)
+void faust_jit_set_param(void *faust_dsp, const char *name, double value)
 {
-    n->process(previous);
+#ifdef FAUST_JIT_NODE
+    std::string cpp_name(name);
+    ((faust_jit_node<double> *)faust_dsp)->setParamValue(cpp_name, value);
+#endif
 }
 
-void graph_add_node(graph<double> *g, node<double> *n)
+double faust_jit_get_param(void *faust_dsp, const char *name)
 {
-    g->add_node(n);
+#ifdef FAUST_JIT_NODE
+    std::string cpp_name(name);
+    return ((faust_jit_node<double> *)faust_dsp)->getParamValue(cpp_name);
+#else
+    throw std::runtime_error("Faust node is not enabled");
+    return 0;
+#endif
 }
 
-void graph_process_bloc(graph<double> *g)
-{
-    g->process_bloc();
-}
+void graph_add_node(graph<double> *g, node<double> *n) {g->add_node(n);}
+void graph_remove_node(graph<double> *g, node<double> *n) {g->remove_node(n);}
+void graph_add_output(graph<double> *g, node<double> *o) {g->add_output(o);}
+void graph_remove_output(graph<double> *g, node<double> *o) {g->remove_output(o);}
 
+void graph_process_bloc(graph<double> *g) {g->process_bloc();}
+
+void rtgraph_set_devices(rtgraph<double> *g, unsigned int in_device, unsigned int out_device) {g->set_devices(in_device, out_device);}
+
+void rtgraph_start_stream(rtgraph<double> *g) {g->start_stream();}
+void rtgraph_stop_stream(rtgraph<double> *g) {g->stop_stream();}

@@ -9,6 +9,7 @@
 #include<memory>
 #include"halfband/halfband.h"
 #include"asciiplotter/asciiplotter.h"
+#include "utilities.h"
 /*
     Node is the main class. 
     It behaves like a linked list, where each node knows to which it is connected next (with pointers).
@@ -21,12 +22,16 @@ struct node
 
     bool connect(node *n);
     bool disconnect(node *n);
+    
+    void set_name(std::string n);
+    std::string &get_name();
 
     virtual void process(node<Flt> *previous);
 
     size_t n_inputs, n_outputs, bloc_size, sample_rate, n_nodes_in;
     std::vector<node *> connections;
     Flt **outputs;
+    std::string name;
 };
 
 template<typename Flt = double>
@@ -122,6 +127,11 @@ struct graph
         std::vector< node<Flt> *> *callee;
     };
 
+    struct call_event
+    {
+        node<Flt> *caller, *callee;
+    };
+
     graph(size_t inp = 0, size_t outp = 1, size_t blocsize = 128, size_t samplerate = 48000);
     // Safe
     void add_node(node<Flt> *n);
@@ -132,6 +142,7 @@ struct graph
 
     void process_bloc();
 
+    std::string generate_patchbook_code();
 
     size_t n_inputs, n_outputs, bloc_size, sample_rate;
     std::vector<node<Flt>*> nodes;
@@ -143,7 +154,13 @@ struct graph
     std::recursive_mutex _mtx;
 protected:
 
-    bool has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v);
+    void _generate_event_list();
+    void _generate_event_list_internal();
+    void _remove_duplicates();
+    std::vector<call_event> call_list;
+
+    void _generate_patchbook_code( std::string &s, std::vector<call_grape> *sto_call, std::vector<call_grape> *snext_call);
+    bool has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v, std::vector<call_grape> *ptr1, std::vector<call_grape> *ptr2);
     void _find_and_remove_out(node<Flt> *n);
     void _find_and_add_out(node<Flt> * n);
     void _rm_node(node<Flt> *n);
@@ -162,7 +179,8 @@ struct rtgraph : public graph<Flt>
 {
     rtgraph(size_t inp = 1, size_t outp = 1, size_t blocsize = 128, size_t samplerate = 48000);
 
-    void openstream();
+    void start_stream();
+    void stop_stream();
 
     void list_devices();
     void set_devices(unsigned int input_device, unsigned int output_device);

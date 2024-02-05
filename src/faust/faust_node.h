@@ -17,6 +17,7 @@ struct faust_node : public node<Flt>, MapUI
     faust_node(size_t blocsize = 128, size_t samplerate = 48000) 
         : node<Flt>::node(processor.getNumInputs(), processor.getNumOutputs(), blocsize, samplerate)
     {
+        this->set_name("Faust");
         processor.buildUserInterface(this);
         processor.init(this->sample_rate);
     }

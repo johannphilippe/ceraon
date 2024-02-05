@@ -45,7 +45,13 @@ then the operation can happen. Else, it raises an error.
 
 ## TODO 
 
-- Graph : must have a buffer, and take output when the "process block" is ending (so that only need to pass graph as user data)
+- Change strategy for graph : 
+  - Add a list of ordered events to process 
+  - In the function generating the list, remove ALL duplicates (due to several connects)
+  - Refresh the list when add node or remove node
+
+- Case of a graph that upsamples and does not downsample : output bloc size is > to input bloc size : handle it 
+
 - Bloc size adapter : useless. Any node could perfectly use a smaller bloc, and perform higher accuracy internally.
 
 - Move to shared pointer as soon as possible 

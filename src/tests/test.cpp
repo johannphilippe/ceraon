@@ -225,7 +225,7 @@ void faust_jit_test()
 {
     SndfileHandle wf("/home/johann/Documents/tmp/faust_jit.wav", SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_PCM_24, 1, 48000);
 
-    faust_jit_factory<double> *fac = faust_jit_factory<double>::from_string("import(\"stdfaust.lib\"); process = os.sawtooth(100) * 0.2;");
+    faust_jit_factory<double> *fac = faust_jit_factory<double>::from_string("import(\"stdfaust.lib\"); process = os.sawtooth(100) * 0.2;", "sawtooth");
     faust_jit_node<double> *dsp = new faust_jit_node<double>(fac, 128, 48000);
     faust_node<filter, double> *filt = new faust_node<filter, double>(128, 48000);
 
@@ -246,7 +246,7 @@ void faust_jit_test()
 
 void csound_faust_test()
 {
-    faust_jit_factory<double> *fac = faust_jit_factory<double>::from_string("import(\"stdfaust.lib\"); freq = hslider(\"freq\", 100, 50, 1000, 0.1); process = os.sawtooth(freq) * 0.2;");
+    faust_jit_factory<double> *fac = faust_jit_factory<double>::from_string("import(\"stdfaust.lib\"); freq = hslider(\"freq\", 100, 50, 1000, 0.1); process = os.sawtooth(freq) * 0.2;", "sawtooth");
     faust_jit_node<double> *fdsp = new faust_jit_node<double>(fac, 128, 48000);
     fdsp->setParamValue("freq", 300);
     std::string csd = "" \
@@ -311,18 +311,86 @@ void test_rtgraph()
     m->connect(f);
 
     rtgraph<double> g(0, 1, 128, 48000);
-    g.list_devices();
+    //g.list_devices();
     //g.set_devices(130, 130);
     g.add_node(o1);
     g.add_node(o2);
     //g.add_output(f);
-    g.openstream();
+    g.start_stream();
+
+    o1->set_name("Oscillator1");
+    o2->set_name("Oscillator2");
+    m->set_name("OscillatorMixer");
+    f->set_name("Filter");
+
+    std::string code = g.generate_patchbook_code();
+    std::cout << code << std::endl;
 
     while(true) 
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
+
+void test_complex_graph()
+{
+    faust_node<osc, double> *o1 = new faust_node<osc, double>();
+    o1->set_name("Oscillator 1");
+    faust_node<square, double> *o2 = new faust_node<square, double>();
+    o2->set_name("Oscillator 2");
+    faust_node<square, double> *o3 = new faust_node<square, double>();
+    o3->set_name("Oscillator 3");
+    mixer<double> *m = new mixer<double>(1, 1);
+    m->set_name("Mixer");
+    faust_node<filter, double> *f1 = new faust_node<filter, double>();
+    f1->set_name("Filter 1");
+    faust_node<filter, double> *f2 = new faust_node<filter, double>();
+    f2->set_name("Filter 2");
+
+    o1->connect(m);
+    o2->connect(m);
+    o3->connect(f2);
+    m->connect(f1);
+
+    graph<double> g(0, 1);
+    g.add_node(o1);
+    g.add_node(o2);
+    g.add_node(o3);
+
+    std::string code = g.generate_patchbook_code();
+    std::cout << code << std::endl;
+
+}
+
+void test_complex_graph2()
+{
+    node<double> *o1 = new node<double>(0, 4);
+    o1->set_name("Osc1");
+    node<double> *o2 = new node<double>(0, 2);
+    o2->set_name("Osc2");
+    node<double> *o3 = new node<double>(0, 1);
+    o3->set_name("Osc3");
+
+    node<double> *f1 = new node<double>(4, 1);
+    f1->set_name("filt1");
+    node<double> *f2 = new node<double>(2, 2);
+    f2->set_name("filt2");
+
+    o1->connect(f2);
+    o2->connect(f2);
+    o3->connect(f1);
+
+    graph<double> g(0, 2);
+    g.add_node(o1);
+    g.add_node(o2);
+    g.add_node(o3);
+
+    std::string code = g.generate_patchbook_code();
+    std::cout << code << std::endl;
+}
+
+// Real complex situation : 
+// * Csound amp following on input driving a Faust synthesizer
 
 int main()
 {
@@ -335,6 +403,7 @@ int main()
     //faust_jit_test();
     //csound_faust_test();
     //test_api();
-    test_rtgraph();
+    //test_rtgraph();
+    test_complex_graph2();
     return 0;
 }

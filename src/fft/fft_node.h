@@ -14,6 +14,7 @@ struct fft_node : public node<Flt>
         : node<Flt>::node{inp, outp, blocsize, samplerate}
         , ffts(inp)
     {
+        this->set_name("FFT");
         size_t complex_size = audiofft::AudioFFT::ComplexSize(this->bloc_size);
         this->outputs = new Flt*[this->n_outputs*2]; // For storing complex numbers
         for(size_t i = 0; i < this->n_outputs*2; ++i)
@@ -44,6 +45,7 @@ struct ifft_node : public node<Flt>
         : node<Flt>::node(inp, outp, blocsize, samplerate)
         , ffts(inp)
     {
+        this->set_name("IFFT");
         for(auto & it : ffts)
             it.init(this->bloc_size);
     }

@@ -25,11 +25,11 @@ struct faust_jit_factory
         f->m_factory = createDSPFactoryFromFile(path, argv.size()-1, argv.data(), "", _err, -1);
         return f;
     }
-    static faust_jit_factory<Flt> *from_string(std::string code, std::vector<std::string> *opts = nullptr) {
+    static faust_jit_factory<Flt> *from_string(std::string code, std::string name, std::vector<std::string> *opts = nullptr) {
         faust_jit_factory *f = new faust_jit_factory<Flt>();
         std::string _err(faust_jit_factory::err);
         std::vector<const char*> argv = faust_jit_factory::parse_args(opts);
-        f->m_factory = createDSPFactoryFromString("faust", code, argv.size()-1, argv.data(), "", _err, -1);
+        f->m_factory = createDSPFactoryFromString(name, code, argv.size()-1, argv.data(), "", _err, -1);
         return f;
     }
     static std::vector<const char *> parse_args(std::vector<std::string> *opts = nullptr)
@@ -54,6 +54,7 @@ struct faust_jit_node : public MapUI, public node<Flt>
     faust_jit_node(faust_jit_factory<Flt> *factory, size_t blocsize = 128, size_t samplerate = 48000) 
         : node<Flt>::node{1, 1, blocsize, samplerate}
     {
+        this->set_name(std::string("FaustJIT - " + factory->m_factory->getName()));
         std::cout << "instanciate " << std::endl;
         m_dsp = factory->m_factory->createDSPInstance();
         m_dsp->buildUserInterface(this);

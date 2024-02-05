@@ -10,6 +10,7 @@ node<Flt>::node( size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     , sample_rate(samplerate)
     , n_nodes_in(0)
 {
+    this->set_name("Node");
     outputs = new Flt*[n_outputs];
     for(size_t i = 0; i < n_outputs; ++i)
         outputs[i] = new Flt[bloc_size];
@@ -68,6 +69,12 @@ void node<Flt>::process(node<Flt> *previous)
     }
 }
 
+template<typename Flt>
+void node<Flt>::set_name(std::string n) {this->name = name_gen::concat(n);}
+
+template<typename Flt>
+std::string &node<Flt>::get_name() {return this->name;}
+
 template class node<double>;
 template class node<float>;
 
@@ -75,6 +82,7 @@ template<typename Flt>
 channel_adapter<Flt>::channel_adapter(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     : node<Flt>::node(inp, outp, blocsize, samplerate)
 {
+    this->set_name("Channel adapter");
     size_t valid = std::max(this->n_inputs, this->n_outputs) 
             % std::min(this->n_inputs, this->n_outputs);
     if(valid != 0)
@@ -148,7 +156,9 @@ template<typename Flt>
 mixer<Flt>::mixer(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     : node<Flt>::node(inp, outp, blocsize, samplerate)
     , process_count(0)
-{}
+{
+    this->set_name("Mixer");
+}
 
 template<typename Flt>
 void mixer<Flt>::process(node<Flt> *previous)
@@ -186,11 +196,13 @@ template class mixer<double>;
 template class mixer<float>;
 
 template<typename Flt>
-simple_upsampler<Flt>::simple_upsampler(size_t inp, size_t outp, size_t blocsize, size_t samplerate, size_t order, size_t steep)
+simple_upsampler<Flt>::simple_upsampler(size_t inp, size_t outp, size_t blocsize, size_t samplerate, 
+        size_t order, size_t steep)
     : node<Flt>::node(inp, outp, blocsize, samplerate)
     , f_order(order)
     , f_steep(steep)
 {
+    this->set_name("Simple upsampler");
     filters.resize(this->n_outputs);
     for(size_t i = 0; i < this->n_outputs; ++i)
         filters[i] = create_halfband(f_order, f_steep);
@@ -219,12 +231,14 @@ void simple_upsampler<Flt>::process(node<Flt> *previous)
 template class simple_upsampler<double>;
 
 template<typename Flt>
-upsampler<Flt>::upsampler(size_t inp, size_t outp, size_t blocsize, size_t samplerate, size_t num_cascade, size_t order, size_t steep)
+upsampler<Flt>::upsampler(size_t inp, size_t outp, size_t blocsize, size_t samplerate, 
+        size_t num_cascade, size_t order, size_t steep)
     : node<Flt>::node(inp, outp, blocsize, samplerate)
     , n_cascade(num_cascade)
     , f_order(order)
     , f_steep(steep)
 {
+    this->set_name("Upsampler");
     size_t base_samplerate = this->sample_rate / (n_cascade * 2);
     size_t base_blocsize = this->bloc_size / (n_cascade * 2);
     upsamplers.resize(num_cascade);
@@ -232,7 +246,8 @@ upsampler<Flt>::upsampler(size_t inp, size_t outp, size_t blocsize, size_t sampl
     {
         base_samplerate *= 2;
         base_blocsize *= 2;
-        this->upsamplers[i] = new simple_upsampler<Flt>(inp, outp, base_blocsize, base_samplerate, f_order, f_steep);
+        this->upsamplers[i] = new simple_upsampler<Flt>(inp, outp, base_blocsize, base_samplerate, 
+                f_order, f_steep);
     }
 }
 
@@ -260,13 +275,15 @@ void upsampler<Flt>::process(node<Flt> *previous)
 template class upsampler<double>;
 
 template<typename Flt>
-downsampler<Flt>::downsampler(size_t inp, size_t outp, size_t blocsize, size_t samplerate, size_t num_cascade, size_t order, size_t steep)
+downsampler<Flt>::downsampler(size_t inp, size_t outp, size_t blocsize, size_t samplerate, 
+        size_t num_cascade, size_t order, size_t steep)
     : node<Flt>::node(inp, outp, blocsize, samplerate)
     , n_cascade(num_cascade)
     , f_order(order)
     , f_steep(steep)
     , n_samps_iter(n_cascade * 2)
 {
+    this->set_name("Downsampler");
     decimators.resize(this->n_outputs);
     for(size_t i = 0; i < this->n_outputs; ++i)
         decimators[i] = create_half_cascade(n_cascade, f_order, f_steep);
@@ -309,6 +326,9 @@ graph<Flt>::graph(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     next_call.reserve(128);
     _mix = std::make_unique<mixer<Flt> >(outp, outp, blocsize, samplerate); 
     _input_node = std::make_unique<node<Flt>>(inp, inp, blocsize, samplerate);
+
+    _mix->set_name("GraphOutput");
+    _input_node->set_name("GraphInputs");
 }
 
 template<typename Flt>
@@ -356,11 +376,61 @@ void graph<Flt>::remove_output(node<Flt> *o)
 }
 
 template<typename Flt>
-bool graph<Flt>::has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v)
+std::string graph<Flt>::generate_patchbook_code()
 {
-    for(size_t i = 0; i < next_call_ptr->size(); ++i)
+    node<Flt> *ptr = (_input_node->n_inputs > 0) ? _input_node.get() : nullptr;
+    std::vector<call_grape> sto_call, snext_call;
+    
+    for(size_t i = 0; i < nodes.size(); ++i)
     {
-        if(next_call_ptr->at(i).caller == n && next_call_ptr->at(i).callee == v)
+        sto_call.push_back({nodes[i], &nodes[i]->connections});
+    }
+    //sto_call.push_back({ptr, &nodes});
+
+    std::string code("");
+    _generate_patchbook_code(code, &sto_call, &snext_call);
+    return code;
+}
+
+template<typename Flt>
+void graph<Flt>::_generate_patchbook_code(std::string &c, std::vector<call_grape> *sto_call, 
+        std::vector<call_grape> *snext_call )
+{
+    snext_call->clear();
+    if(sto_call->size() == 0) 
+        return;
+    for(size_t i = 0; i < sto_call->size(); ++i)
+    {
+        node<Flt> *caller = sto_call->at(i).caller; // nullptr at first pass
+        for(size_t j = 0; j < sto_call->at(i).callee->size(); ++j)
+        { 
+            std::vector<node<Flt> *> *nxt = &(sto_call->at(i).callee->at(j)->connections);
+            // And for each returned connections, (next called events), we add an element in next_call_ptr
+            //if(!has_same_call(sto_call->at(i).callee->at(j), nxt, sto_call, snext_call))
+                for(size_t ch = 0; ch < caller->n_outputs; ++ch) {
+                    std::string s = "- " + caller->get_name() 
+                        + " (Out" + std::to_string(ch) + ") >> " 
+                        + sto_call->at(i).callee->at(j)->get_name() 
+                        + "(In" + std::to_string(ch) + ")\n";
+                    c += s;
+                }
+            if(!has_same_call(sto_call->at(i).callee->at(j), nxt, sto_call, snext_call))
+            {
+                snext_call->push_back({sto_call->at(i).callee->at(j), nxt});
+            } 
+        }
+    }
+    this->_generate_patchbook_code(c, snext_call, sto_call);
+}
+
+
+template<typename Flt>
+bool graph<Flt>::has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v,   
+        std::vector<call_grape> *ptr1, std::vector<call_grape> *ptr2)
+{
+    for(size_t i = 0; i < ptr2->size(); ++i)
+    {
+        if(ptr2->at(i).caller == n && ptr2->at(i).callee == v)
             return true;
     }
     return false;
@@ -439,7 +509,7 @@ void graph<Flt>::_process_grape()
             to_call_ptr->at(i).callee->at(j)->process(caller);
             std::vector<node<Flt> *> *nxt = &(to_call_ptr->at(i).callee->at(j)->connections);
             // And for each returned connections, (next called events), we add an element in next_call_ptr
-            if(!has_same_call(to_call_ptr->at(i).callee->at(j), nxt))
+            if(!has_same_call(to_call_ptr->at(i).callee->at(j), nxt, to_call_ptr, next_call_ptr))
                 next_call_ptr->push_back({to_call_ptr->at(i).callee->at(j), nxt});
         }
     }
@@ -491,7 +561,7 @@ void rtgraph<Flt>::set_devices(unsigned int input_device, unsigned int output_de
 
 
 template<typename Flt>
-void rtgraph<Flt>::openstream()
+void rtgraph<Flt>::start_stream()
 {
     if(dac.isStreamOpen())
     {
@@ -503,6 +573,14 @@ void rtgraph<Flt>::openstream()
             (unsigned int)this->sample_rate, (unsigned int *)&this->bloc_size, 
             &rtgraph_callback, (void *)this, _options.get());
     dac.startStream();
+}
+
+template<typename Flt>
+void rtgraph<Flt>::stop_stream()
+{
+    if(dac.isStreamOpen()) {
+        dac.stopStream();
+    }
 }
 
 int rtgraph_callback(void *out_buffer, void *in_buffer, 
