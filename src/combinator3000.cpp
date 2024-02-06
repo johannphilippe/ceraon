@@ -70,12 +70,11 @@ void node<Flt>::process(node<Flt> *previous)
         // Copying inputs to outputs (input is the output of previous node)
         for(size_t ch = 0; ch < previous->n_outputs; ++ch)
             std::copy(previous->outputs[ch], previous->outputs[ch] + previous->bloc_size, this->outputs[ch]);
-            //::memcpy(outputs[ch], previous->outputs[ch], sizeof(Flt) * previous->bloc_size);
     }
 }
 
 template<typename Flt>
-void node<Flt>::handles_parallel() {return false;}
+bool node<Flt>::handles_parallel() {return false;}
 
 template<typename Flt>
 void node<Flt>::set_name(std::string n) {this->name = name_gen::concat(n);}

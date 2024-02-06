@@ -45,7 +45,26 @@ then the operation can happen. Else, it raises an error.
 
 ## TODO 
 
-- Paralellizer and unparalellizer : issue in draw graph > find a solution ?
+- Paralellizer : issue in draw graph > find a solution ?
+  - NodeGroup solution : 
+    - Able to "take possession" of a group of parallel nodes
+    - Parents are connected to actual inner nodes
+    - group can handle internal nodes computations and have its own buffers
+    - node_group_in(std::vector<node *> internals)
+      - Take 2 nodes (for example) with 2 inputs each and outputs 4 channels
+  
+- New parallel handling
+  * IF previous->n_outputs > this->n_inputs :  cut (only take available inputs)
+  * IF previous->n_outputs < this->n_inputs : only previous->n_outputs inputs are fed
+  * Channel adapter (merge, split) is used when user requires it (can be an optional bool argument to "connect" too)
+  * 2 nodes with 2 outputs each connecting to a 4 input node : 
+    * Can be split/mixed
+    * Can be parallel with parallelizer 
+  * 1 node with 2 outputs wants to dispatch to 2 nodes with 1 input each
+    * Can be assigned without adapter (channel 1 goes to each)
+    * Can be dispatched with dispatcher
+
+- Move AudioFFT to copy rather than submodule (keep double version instead of float)
 
 - Add offset in node connections (connect a to b from offset out 1 and offset in 2 (so channels out from 1 to ? connected to 2 to ?))
   >> Or just make a Node that can bring together parallel signals 

@@ -14,9 +14,17 @@
     Node is the main class. 
     It behaves like a linked list, where each node knows to which it is connected next (with pointers).
 */
+
 template<typename Flt = double>
 struct node
 {
+    struct connection
+    {
+        node<Flt> *n = nullptr;
+        size_t input_offset = 0;
+        size_t output_offset = 0;
+    };
+
     node(size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000);
     virtual ~node();
 
@@ -48,7 +56,6 @@ struct channel_adapter : public node<Flt>
 
 /*
     Node mixer is used to merge several nodes together. 
-    It knows its number of 
 */
 template<typename Flt = double>
 struct mixer : public node<Flt>
@@ -70,7 +77,7 @@ struct parallelizer : public node<Flt>
 
 /*
     Simple upsample 
-        * upsamples to *2 origin sample rate
+        * upsamples to * 2 origin sample rate
         * results in *2 bloc size 
 */
 template<typename Flt = double>
