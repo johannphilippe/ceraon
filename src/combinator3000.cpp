@@ -14,11 +14,16 @@ node<Flt>::node( size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     outputs = new Flt*[n_outputs];
     for(size_t i = 0; i < n_outputs; ++i)
         outputs[i] = new Flt[bloc_size];
+    
+   // Contiguous memory
+   //Flt * raw_mem = contiguous_memory(this->bloc_size, this->n_outputs, this->outputs);
 }
 
 template<typename Flt>
 node<Flt>::~node()
 {
+    for(auto & it : connections)
+        it->n_nodes_in -= 1;
     for(size_t i = 0; i < n_outputs; ++i)
         delete outputs[i];
     delete outputs;
@@ -27,7 +32,7 @@ node<Flt>::~node()
 template<typename Flt>
 bool node<Flt>::connect(node<Flt> *n)
 {
-    if(this->n_outputs == n->n_inputs) {
+    if(this->n_outputs == n->n_inputs || n->handles_parallel()) {
         connections.push_back(n);
         n->n_nodes_in += 1;
         return true;
@@ -70,6 +75,9 @@ void node<Flt>::process(node<Flt> *previous)
 }
 
 template<typename Flt>
+void node<Flt>::handles_parallel() {return false;}
+
+template<typename Flt>
 void node<Flt>::set_name(std::string n) {this->name = name_gen::concat(n);}
 
 template<typename Flt>
@@ -91,7 +99,6 @@ channel_adapter<Flt>::channel_adapter(size_t inp, size_t outp, size_t blocsize, 
             + std::to_string(this->n_inputs) + " " 
             + std::to_string(this->n_outputs));
 }
-
 
 template<typename Flt>
 void channel_adapter<Flt>::process(node<Flt> *previous)
@@ -120,14 +127,14 @@ void channel_adapter<Flt>::process(node<Flt> *previous)
         for(size_t ch = 0; ch < this->n_outputs; ++ch)
             std::copy(previous->outputs[0], previous->outputs[0] + this->bloc_size, this->outputs[ch]);
     } else { // need to check if % is 0
-        if(this->n_inputs > this->n_outputs && (this->n_inputs % this->n_outputs) == 0 )  
+        if(this->n_inputs > this->n_outputs && ((this->n_inputs % this->n_outputs) == 0 ) )  
         {
             for(size_t o = 0; o < this->n_outputs; ++o)
             {
                 for(size_t s = 0; s < this->bloc_size; ++s)
                 {
                     Flt sum = 0;
-                    for(size_t i = 0; i < this->n_inputs; i+= this->n_outputs)
+                    for(size_t i = o; i < this->n_inputs; i+= this->n_outputs)
                     {
                         sum += previous->outputs[i][s];
                     }
@@ -143,9 +150,6 @@ void channel_adapter<Flt>::process(node<Flt> *previous)
             }
         }
     }
-
-    for(auto & it : this->connections)
-        it->process(this);
 }
 
 template class channel_adapter<double>;
@@ -158,6 +162,9 @@ mixer<Flt>::mixer(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     , process_count(0)
 {
     this->set_name("Mixer");
+    
+    for(size_t ch = 0; ch < this->n_inputs; ++ch)
+        std::memset(this->outputs[ch], 0, this->bloc_size * sizeof(Flt));
 }
 
 template<typename Flt>
@@ -170,7 +177,7 @@ void mixer<Flt>::process(node<Flt> *previous)
     for(size_t ch = 0; ch < this->n_inputs; ++ch)
     {
         if(this->process_count == 0)
-            ::memset(this->outputs[ch], 0, this->bloc_size * sizeof(Flt));
+            std::memset(this->outputs[ch], 0, this->bloc_size * sizeof(Flt));
         for(size_t i = 0; i < this->bloc_size; ++i)
         {
             this->outputs[ch][i] += previous->outputs[ch][i];
@@ -194,6 +201,33 @@ void mixer<Flt>::process(node<Flt> *previous)
 
 template class mixer<double>;
 template class mixer<float>;
+
+template<typename Flt>
+parallelizer<Flt>::parallelizer(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
+    : node<Flt>::node(inp, outp, blocsize, samplerate)
+    , current_channel(0)
+{}
+
+template<typename Flt>
+void parallelizer<Flt>::process(node<Flt> *previous) 
+{
+    if(this->process_count == 0)
+        this->current_channel = 0;
+    for(size_t ch = 0; ch < previous->n_outputs; ++ch)
+    {
+        std::copy(previous->outputs[ch], previous->outputs[ch] + previous->bloc_size, 
+                this->outputs[current_channel]);
+        current_channel = (current_channel + 1) % this->n_inputs;
+    }    
+
+    this->process_count = (this->process_count + 1) % this->n_nodes_in;
+}
+
+template<typename Flt>
+bool parallelizer<Flt>::handles_parallel() {return true;}
+
+template class parallelizer<double>;
+template class parallelizer<float>;
 
 template<typename Flt>
 simple_upsampler<Flt>::simple_upsampler(size_t inp, size_t outp, size_t blocsize, size_t samplerate, 
@@ -409,28 +443,15 @@ void graph<Flt>::_generate_patchbook_code(std::string &c)
     {
         if(it.caller == nullptr)
             continue;
-
-            for(size_t ch = 0; ch < it.caller->n_outputs; ++ch) 
-            {
-                std::string s = "- " + it.caller->get_name() 
-                    + " (Out" + std::to_string(ch) + ") >> " 
-                    + it.callee->get_name() 
-                    + "(In" + std::to_string(ch) + ")\n";
-                c += s;
-            }
+        for(size_t ch = 0; ch < it.caller->n_outputs; ++ch) 
+        {
+            std::string s = "- " + it.caller->get_name() 
+                + " (Out" + std::to_string(ch) + ") >> " 
+                + it.callee->get_name() 
+                + "(In" + std::to_string(ch) + ")\n";
+            c.append(s);
+        }
     }
-}
-
-template<typename Flt>
-bool graph<Flt>::has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v,   
-        std::vector<call_grape> *ptr1, std::vector<call_grape> *ptr2)
-{
-    for(size_t i = 0; i < ptr2->size(); ++i)
-    {
-        if(ptr2->at(i).caller == n && ptr2->at(i).callee == v)
-            return true;
-    }
-    return false;
 }
 
 template<typename Flt>
@@ -453,9 +474,16 @@ template<typename Flt>
 void graph<Flt>::_find_and_add_out(node<Flt> * n)
 {
     std::vector<node<Flt> *> *_iter_list = &n->connections;
+    if(_iter_list->size() == 0 ) {
+        if(n->n_outputs > 0 ) {
+            n->connect(_mix.get());
+        }
+        return;
+    }
     for(size_t i = 0; i < _iter_list->size(); ++i)
     {
-        if(_iter_list->at(i)->connections.size() == 0)  // End of chain
+        if(_iter_list->at(i)->connections.size() == 0 
+            && _iter_list->at(i)->n_outputs > 0)  // End of chain
         {
             _iter_list->at(i)->connect(_mix.get());
         } else 
@@ -524,6 +552,7 @@ void graph<Flt>::_remove_duplicates()
             if(call_list[i].caller == call_list[j].caller 
                 && call_list[i].callee == call_list[j].callee)
             {
+                std::cout << "remove duplicate : " << call_list[j].caller->get_name() << " -> "  << call_list[j].callee->get_name() << std::endl;
                 call_list.erase(call_list.begin() + j);
                 --j;
             }
@@ -561,6 +590,8 @@ rtgraph<Flt>::rtgraph(size_t inp, size_t outp, size_t blocsize, size_t  samplera
     _options = std::make_unique<RtAudio::StreamOptions>();
     _options.get()->flags = RTAUDIO_NONINTERLEAVED | RTAUDIO_MINIMIZE_LATENCY | RTAUDIO_SCHEDULE_REALTIME;
     _options.get()->priority = 99;
+
+    dac.showWarnings(false);
 }
 
 template<typename Flt>
@@ -585,7 +616,6 @@ void rtgraph<Flt>::set_devices(unsigned int input_device, unsigned int output_de
     input_parameters.deviceId = input_device;
     output_parameters.deviceId = output_device;
 }
-
 
 template<typename Flt>
 void rtgraph<Flt>::start_stream()

@@ -38,12 +38,6 @@ struct faust_node : public node<Flt>, MapUI
         plot.show();
 #endif
     }
-
-    void set_param()
-    {
-        
-    }
-
     P processor;
 };
 

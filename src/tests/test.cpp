@@ -11,6 +11,7 @@
 #include "faust/tests/fftfreeze.hpp"
 #include "csound/csound_node.h"
 #include "fft/fft_node.h"
+#include "sndfile/sndfile_node.h"
 #include "../../include/combinator3000_api.h"
 
 #include "sndfile.hh"
@@ -389,6 +390,85 @@ void test_complex_graph2()
     std::cout << code << std::endl;
 }
 
+void test_sndwrite()
+{
+    faust_node<osc, double> *o1 = new faust_node<osc, double>();
+    faust_node<square, double> *o2 = new faust_node<square, double>();
+    mixer<double> *m = new mixer<double>(1, 1);
+    faust_node<filter, double> *f = new faust_node<filter, double>();
+    sndwrite_node<double> *w = new sndwrite_node<double>("/home/johann/Documents/tmp/sndwrite.wav", 1, 128, 48000);
+
+    o1->connect(m);
+    o2->connect(m);
+    m->connect(f);
+    f->connect(w);
+
+    rtgraph<double> g(0, 1, 128, 48000);
+
+    g.add_node(o1);
+    g.add_node(o2);
+
+    g.start_stream();
+
+    while(true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+}
+
+void test_sndread()
+{
+    sndread_node<double> *s = new sndread_node<double>("/home/johann/Documents/tmp/Tears of exhaustion.wav", 128, 48000 );
+    faust_node<filter, double> *f = new faust_node<filter, double> (128, 48000);
+
+    s->connect(f);
+
+    std::cout << "outputs : " << s->n_outputs << std::endl;
+    rtgraph<double> g(0, 1, 128, 48000);
+
+    g.add_node(s);
+    g.start_stream();
+
+    std::cout << g.generate_patchbook_code() << std::endl;
+    while(true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+}
+
+void test_sndread_stereo()
+{
+
+    sndread_node<double> *s = new sndread_node<double>("/home/johann/Documents/tmp/Tears of exhaustion.wav", 128, 48000 );
+    node<double> *n = new node<double>(2, 2, 128, 48000);
+
+    s->connect(n);
+    std::cout << "outputs : " << s->n_outputs << std::endl;
+    rtgraph<double> g(0, 2, 128, 48000);
+
+    g.add_node(s);
+    g.start_stream();
+
+    std::cout << g.generate_patchbook_code() << std::endl;
+    while(true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+}
+
+void test_single()
+{
+    sndread_node<double> *s = new sndread_node<double>("/home/johann/Documents/tmp/Tears of exhaustion.wav", 128, 48000 );
+
+    std::cout << "outputs : " << s->n_outputs << std::endl;
+    rtgraph<double> g(0, 2, 128, 48000);
+
+    g.add_node(s);
+    g.start_stream();
+
+    std::cout << g.generate_patchbook_code() << std::endl;
+    while(true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+}
+
 // Real complex situation : 
 // * Csound amp following on input driving a Faust synthesizer
 
@@ -405,6 +485,10 @@ int main()
     //test_api();
     //test_rtgraph();
     //test_complex_graph();
-    test_complex_graph2();
+    //test_complex_graph2();
+    //test_sndwrite();
+    //test_sndread();
+    //test_sndread_stereo();
+    test_single();
     return 0;
 }

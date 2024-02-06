@@ -68,6 +68,8 @@ struct faust_jit_node : public MapUI, public node<Flt>
         {
             this->outputs[i] = new Flt[this->bloc_size];
         }
+        
+        //Flt *rawmem = contiguous_memory(this->bloc_size, this->n_outputs, this->outputs);
         // Create buffers
     }
 

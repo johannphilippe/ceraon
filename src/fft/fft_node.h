@@ -19,6 +19,8 @@ struct fft_node : public node<Flt>
         this->outputs = new Flt*[this->n_outputs*2]; // For storing complex numbers
         for(size_t i = 0; i < this->n_outputs*2; ++i)
             this->outputs[i] = new Flt[complex_size];
+        
+        Flt *raw_mem = contiguous_memory(complex_size, this->n_outputs, this->outputs);
             
         for(auto & it : ffts)
             it.init(this->bloc_size);

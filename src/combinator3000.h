@@ -28,7 +28,12 @@ struct node
 
     virtual void process(node<Flt> *previous);
 
-    size_t n_inputs, n_outputs, bloc_size, sample_rate, n_nodes_in;
+    virtual bool handles_parallel();
+
+    // Keep these for at the beginning of the struct (some childs init without constructor call)
+    size_t n_inputs, n_outputs, bloc_size, sample_rate;
+
+    size_t n_nodes_in;
     std::vector<node *> connections;
     Flt **outputs;
     std::string name;
@@ -52,6 +57,15 @@ struct mixer : public node<Flt>
     virtual void process(node<Flt> *previous) override;
 
     size_t process_count;
+};
+
+template<typename Flt = double>
+struct parallelizer : public node<Flt>
+{
+    parallelizer(size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000);
+    virtual void process(node<Flt> *previous) override;
+    size_t process_count, current_channel;
+    bool handles_parallel() override;
 };
 
 /*
@@ -148,27 +162,22 @@ struct graph
     size_t n_inputs, n_outputs, bloc_size, sample_rate;
     std::vector<node<Flt>*> nodes;
 
-    std::vector<call_grape> to_call, next_call;
-    std::vector<call_grape> *to_call_ptr, *next_call_ptr;
 
     std::unique_ptr<mixer<Flt>> _mix;
     std::unique_ptr<node<Flt>> _input_node;
-
     std::recursive_mutex _mtx;
 protected:
-
-    std::vector<call_event> call_list;
-    void _generate_event_list();
-    void _remove_duplicates();
+    std::vector<call_grape> to_call, next_call;
+    std::vector<call_grape> *to_call_ptr, *next_call_ptr;
 
     void _generate_patchbook_code( std::string &s);
     
-    bool has_same_call(node<Flt> *n, std::vector<node<Flt> *> *v, std::vector<call_grape> *ptr1, std::vector<call_grape> *ptr2);
-    
+    std::vector<call_event> call_list;
+    void _generate_event_list();
+    void _remove_duplicates();
     void _find_and_remove_out(node<Flt> *n);
     void _find_and_add_out(node<Flt> * n);
     void _rm_node(node<Flt> *n);
-
     void _process_grape();
 };
 

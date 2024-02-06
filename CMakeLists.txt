@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(aion_engine LANGUAGES CXX)
+project(combinator LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +17,7 @@ option(TESTS "Build test executable" ON)
 option(BUILD_FFT_NODE "Build FFT node" ON)
 option(BUILD_FAUST_JIT_NODE "Build Faust JIT (require LLVM) node" ON)
 option(BUILD_CSOUND_NODE "Build Csound node" ON)
+option(BUILD_SNDFILE_NODE "Build Sndfile nodes" ON)
 
 set(PLUGIN_NODES_LIB "")
 #############################################
@@ -54,6 +55,16 @@ if(BUILD_CSOUND_NODE)
       target_link_libraries(csound_node PUBLIC ${CSOUND_LIBRARIES})
       set(PLUGIN_NODES_LIB ${PLUGIN_NODES_LIB} csound_node)
       add_compile_definitions(CSOUND_NODE)
+endif()
+
+if(BUILD_SNDFILE_NODE)
+      add_library(sndfile_node STATIC
+      ./src/sndfile/sndfile_node.h)
+      set_target_properties(sndfile_node PROPERTIES LINKER_LANGUAGE CXX)
+      target_include_directories(sndfile_node PUBLIC ./src)
+      target_link_libraries(sndfile_node PUBLIC sndfile)
+      set(PLUGIN_NODES_LIB ${PLUGIN_NODES_LIB} sndfile_node)
+      add_compile_definitions(SNDFILE_NODE)
 endif()
 
 #string(STRIP ${PLUGIN_NODES_LIB} PLUGIN_NODES_LIB)

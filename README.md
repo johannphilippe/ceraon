@@ -45,10 +45,10 @@ then the operation can happen. Else, it raises an error.
 
 ## TODO 
 
-- Change strategy for graph : 
-  - Add a list of ordered events to process 
-  - In the function generating the list, remove ALL duplicates (due to several connects)
-  - Refresh the list when add node or remove node
+- Paralellizer and unparalellizer : issue in draw graph > find a solution ?
+
+- Add offset in node connections (connect a to b from offset out 1 and offset in 2 (so channels out from 1 to ? connected to 2 to ?))
+  >> Or just make a Node that can bring together parallel signals 
 
 - Case of a graph that upsamples and does not downsample : output bloc size is > to input bloc size : handle it 
 
@@ -69,9 +69,16 @@ then the operation can happen. Else, it raises an error.
 
 - Done - FFT node 
 - Done - Faust LLVM node
-- Done - Csound node -> Add from file constructor
+- Done - Csound node
+- Done - Sndfile node : still need to 
+  - Expose to API
+  - Add libsamplerate to resample if needed (read)
+  - Add loop mode (optional)
+  - Add change sndfile mode (through function)
+  
 - Supercollider node  ? (not sure there is a public API to handle audio)
 - Convolution FIR Node (with overlap add) ? 
 - Base nodes (gain, fadein, fadeout etc)
 - RtAudio nodes
-- API to create external nodes and build it (so API to link dynamik libraries at runtime)
+- API to create external nodes (C++ or Faust) and build it (so API to link dynamic libraries at runtime)
+- Way to keep LLVM binaries in project to retrieve it later ? (only needed for big DSP's)
