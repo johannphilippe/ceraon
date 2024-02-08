@@ -26,14 +26,14 @@ struct fft_node : public node<Flt>
             it.init(this->bloc_size);
     }
 
-    void process(node<Flt> *previous) override 
+    void process(connection<Flt> &previous) override 
     {
-        for(size_t i = 0; i < this->n_inputs; ++i)
+        for(size_t ch = previous.output_range.first, i = previous.input_offset; 
+            ch <= previous.output_range.second; ++ch, ++i)
         {
             Flt *real = this->outputs[i*2];
             Flt *imag = this->outputs[i*2+1];
-            const Flt *data = previous->outputs[i];
-
+            const Flt *data = previous.target->outputs[ch];
             ffts[i].fft(data, real, imag);
         }
     }
@@ -52,12 +52,13 @@ struct ifft_node : public node<Flt>
             it.init(this->bloc_size);
     }
 
-    void process(node<Flt> *previous) override 
+    void process(connection<Flt> &previous) override 
     {
-        for(size_t i = 0; i < this->n_outputs; ++i)
+        for(size_t ch = previous.output_range.first, i = previous.input_offset;
+            ch <= previous.output_range.second; ch+=3, ++i)
         {
-            const Flt *real = previous->outputs[i*3];
-            const Flt *imag = previous->outputs[i*3+1];
+            const Flt *real = previous.target->outputs[ch*3];
+            const Flt *imag = previous.target->outputs[ch*3+1];
             ffts[i].ifft(this->outputs[i], real, imag);
         }
     }

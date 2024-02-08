@@ -11,8 +11,8 @@ struct csound_node : public Csound, node<Flt>
 {
     csound_node(std::string code, size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000)
         : node<Flt>::node(inp, outp, blocsize, samplerate)
+        , process_cnt(0)
     {
-
         this->set_name("Csound");
 
         size_t err;
@@ -49,33 +49,38 @@ struct csound_node : public Csound, node<Flt>
         return new csound_node<Flt>(csd_str, inp, outp, blocsize, samplerate);
     }
 
-    void process(node<Flt> *previous)
+    void process(connection<Flt> &previous)
     {
         std::cout << "perform " << std::endl;
+
         if(this->n_inputs > 0)
         {
-            for(size_t ch = 0; ch < this->n_inputs; ++ch)
+            for(size_t ch = previous.output_range.first, i = previous.input_offset;
+                ch <= previous.output_range.second; ++ch, ++i)
+            {
+                for(size_t n = 0; n < this->bloc_size; ++n)
+                    this->SetSpinSample(n, i, previous.target->outputs[ch][n]);
+            }
+            process_cnt = (process_cnt + 1) % this->n_nodes_in;
+        }
+
+        if(process_cnt == 0) 
+        {
+            int err = this->PerformKsmps();
+            if(err != 0) 
+                std::cout << "error with csound performance" << std::endl;
+
+            for(size_t ch = 0; ch < this->n_outputs; ++ch)
             {
                 for(size_t i = 0; i < this->bloc_size; ++i)
                 {
-                    this->SetSpinSample(i, ch, previous->outputs[ch][i]);
+                    this->outputs[ch][i] = this->GetSpoutSample(i, ch);
                 }
-            }
-
-        }
-        int err = this->PerformKsmps();
-        if(err != 0) 
-            std::cout << "error with csound performance" << std::endl;
-
-        for(size_t ch = 0; ch < this->n_outputs; ++ch)
-        {
-            for(size_t i = 0; i < this->bloc_size; ++i)
-            {
-                this->outputs[ch][i] = this->GetSpoutSample(i, ch);
             }
         }
     }
 
+    size_t process_cnt;
     std::unique_ptr<CSOUND_PARAMS> _params;
 };
 

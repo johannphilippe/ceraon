@@ -53,6 +53,7 @@ struct faust_jit_node : public MapUI, public node<Flt>
 {
     faust_jit_node(faust_jit_factory<Flt> *factory, size_t blocsize = 128, size_t samplerate = 48000) 
         : node<Flt>::node{1, 1, blocsize, samplerate}
+        , process_cnt(0)
     {
         this->set_name(std::string("FaustJIT - " + factory->m_factory->getName()));
         std::cout << "instanciate " << std::endl;
@@ -65,12 +66,12 @@ struct faust_jit_node : public MapUI, public node<Flt>
 
         this->outputs = new Flt*[this->n_outputs];
         for(size_t i = 0; i < this->n_outputs; ++i)
-        {
             this->outputs[i] = new Flt[this->bloc_size];
-        }
         
-        //Flt *rawmem = contiguous_memory(this->bloc_size, this->n_outputs, this->outputs);
-        // Create buffers
+        if(this->n_inputs > 0)
+            inputs = new Flt*[this->n_inputs];
+        else
+            inputs = nullptr;
     }
 
     ~faust_jit_node()
@@ -78,15 +79,22 @@ struct faust_jit_node : public MapUI, public node<Flt>
         delete m_dsp;
     }
 
-    void process(node<Flt> *previous)
+    void process(connection<Flt> &previous)
     {
-        std::cout << "process " << std::endl;
-        Flt **inputs = nullptr;
-        if(this->n_inputs > 0) 
-            inputs = previous->outputs;
-        m_dsp->compute(this->bloc_size, inputs, this->outputs);
+        if(this->n_inputs > 0)
+        {
+            for(size_t ch = previous.output_range.first, i = previous.input_offset;
+                ch <= previous.output_range.second; ++ch, ++i)
+                    inputs[i] = previous.target->outputs[ch];
+            process_cnt = (process_cnt + 1) % this->n_nodes_in;
+        }
+
+        if(process_cnt == 0) 
+            m_dsp->compute(this->bloc_size, inputs, this->outputs);
     }
 
+    Flt **inputs;
+    size_t process_cnt;
     dsp *m_dsp;
 };
 #endif

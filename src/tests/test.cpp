@@ -78,15 +78,15 @@ void resampler_test()
 
     graph<double> g;
     g.add_node(o);
-    g.process_bloc();
 
     // Buffer of 128 
     size_t dur = 10; // seconds 
     size_t nsamps_total = dur * 48000;
     size_t npasses = nsamps_total / 128;
+
+
     for(size_t i = 0; i < npasses; ++i) 
     {
-        std::cout << "npasses : " << i << " / " << npasses << std::endl;
         g.process_bloc();
         upfile.writef(f->outputs[0], 256);
         downfile.writef(down->outputs[0], 128);
@@ -184,31 +184,63 @@ void simple_fft_test()
 
 void fft_denoise_test()
 {
-    faust_node<osc, double> *o1 = new faust_node<osc, double>();
-    upsampler<double> *up = new upsampler<double>(1, 1, 512, 192000, 2, 10, 1);
-    
-    fft_node<double> *_fft = new fft_node<double>(1, 3, 512, 192000);
-    faust_node<fftfreeze, double> *_delfft = new faust_node<fftfreeze, double>(255, 192000);
-    ifft_node<double> *_ifft = new ifft_node<double>(3, 1, 512, 192000);
+    size_t up_bloc = 512;
+    size_t up_sr = 192000;
+    size_t up_factor = 2;
 
-    downsampler<double> *down = new downsampler<double>(1, 1, 128, 48000, 2, 10, 1);
+    faust_node<osc, double> *o1 = new faust_node<osc, double>(128, 48000);
+    upsampler<double> *up = new upsampler<double>(1, 1, up_bloc, up_sr, up_factor, 10, 1);
+
+    // FFT 
+    fft_node<double> *_fft = new fft_node<double>(1, 3, up_bloc, up_sr);
+    faust_node<fftfreeze, double> *_delfft = new faust_node<fftfreeze, double>(up_bloc/2-1, up_sr);
+    ifft_node<double> *_ifft = new ifft_node<double>(3, 1, up_bloc, up_sr);
+
+    // Downsample
+    downsampler<double> *down = new downsampler<double>(1, 1, 128, 48000, up_factor, 10, 1);
+
+    sndwrite_node<double> *sndw = new sndwrite_node<double>("/home/johann/Documents/tmp/fft_del.wav", 1, 128, 48000);
     
     _delfft->setParamValue("fftSize", 512);
     //_delfft->setParamValue("freezeBtn", 1);
 
     o1->connect(up);
     up->connect(_fft);
+    _fft->connect(_ifft);
+    _delfft->connect(_ifft);
+    _ifft->connect(down);
+    down->connect(sndw);
+
+    std::cout << "!!! Print after connecting, before adding to node " << std::endl;
+    auto ff = [](node<double> *ptr) {
+        std::cout << ptr->get_name() << std::endl;
+        for(auto & it : ptr->connections)
+            std::cout << "\tconnections - " << it.target->get_name() << " & chans  " << it.output_range.second << std::endl; 
+    };
+
+    ff(o1);
+    ff(up);
+    ff(_fft);
+    ff(_ifft);
+
+    /*
+    up->connect(_fft);
     _fft->connect(_delfft);
     _delfft->connect(_ifft);
     _ifft->connect(down);
+    */
 
-    graph<double> g;
+    rtgraph<double> g(0, 1, 128, 48000);
     g.add_node(o1);
 
-    SndfileHandle wf("/home/johann/Documents/tmp/fft_delay.wav", SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_PCM_24, 1, 48000);
     size_t dur = 10; // seconds 
     size_t nsamps_total = dur * 48000;
     size_t npasses = nsamps_total / 128;
+
+    std::cout << g.generate_patchbook_code() << std::endl;
+
+    g.start_stream();
+    /*
     for(size_t i = 0; i < npasses; ++i)
     {
         if(i < npasses/2 )
@@ -217,7 +249,11 @@ void fft_denoise_test()
         } else 
             _delfft->setParamValue("freezeBtn", 0);
         g.process_bloc();
-        wf.writef(down->outputs[0], 128);
+    }
+    */
+
+    while(true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 }
 
@@ -226,7 +262,7 @@ void faust_jit_test()
 {
     SndfileHandle wf("/home/johann/Documents/tmp/faust_jit.wav", SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_PCM_24, 1, 48000);
 
-    faust_jit_factory<double> *fac = faust_jit_factory<double>::from_string("import(\"stdfaust.lib\"); process = os.sawtooth(100) * 0.2;", "sawtooth");
+    faust_jit_factory<double> *fac = faust_jit_factory<double>::from_string("import(\"stdfaust.lib\"); process = os.sawtooth(200) * 0.2;", "sawtooth");
     faust_jit_node<double> *dsp = new faust_jit_node<double>(fac, 128, 48000);
     faust_node<filter, double> *filt = new faust_node<filter, double>(128, 48000);
 
@@ -303,26 +339,38 @@ void test_api()
 void test_rtgraph()
 {
     faust_node<osc, double> *o1 = new faust_node<osc, double>();
+    print("Osc 1 : " + std::to_string(intptr_t(o1)));
     faust_node<square, double> *o2 = new faust_node<square, double>();
+    print("Osc 2 : " + std::to_string(intptr_t(o2)));
     mixer<double> *m = new mixer<double>(1, 1);
+    print("Mixer : " + std::to_string(intptr_t(m)));
     faust_node<filter, double> *f = new faust_node<filter, double>();
-
-    o1->connect(m);
-    o2->connect(m);
-    m->connect(f);
-
-    rtgraph<double> g(0, 1, 128, 48000);
-    //g.list_devices();
-    //g.set_devices(130, 130);
-    g.add_node(o1);
-    g.add_node(o2);
-    //g.add_output(f);
-    g.start_stream();
+    print("Filter 1 : " + std::to_string(intptr_t(f)));
 
     o1->set_name("Oscillator1");
     o2->set_name("Oscillator2");
     m->set_name("OscillatorMixer");
     f->set_name("Filter");
+
+    std::cout << "Nodes created " << std::endl;
+
+    o1->connect(m);
+    o2->connect(m);
+    m->connect(f);
+
+    std::cout << "Nodes connected " << std::endl;
+
+    rtgraph<double> g(0, 1, 128, 48000);
+
+    std::cout << "Graph created " << std::endl;
+
+    g.add_node(o1);
+    g.add_node(o2);
+
+    std::cout << "Nodes added, starting perf " << std::endl;
+
+    g.start_stream();
+
 
     std::string code = g.generate_patchbook_code();
     std::cout << code << std::endl;
@@ -410,6 +458,8 @@ void test_sndwrite()
 
     g.start_stream();
 
+    std::string code = g.generate_patchbook_code();
+    std::cout << code << std::endl;
     while(true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
@@ -440,7 +490,6 @@ void test_sndread_stereo()
     sndread_node<double> *s = new sndread_node<double>("/home/johann/Documents/tmp/Tears of exhaustion.wav", 128, 48000 );
     node<double> *n = new node<double>(2, 2, 128, 48000);
 
-    s->connect(n);
     std::cout << "outputs : " << s->n_outputs << std::endl;
     rtgraph<double> g(0, 2, 128, 48000);
 
@@ -476,14 +525,18 @@ int main()
 {
     //simple_test();
     //mix_test();
+
+    // Non realtime 
     //resampler_test();
-    //rt_test();
     //simple_fft_test();
-    //fft_denoise_test();
     //faust_jit_test();
     //csound_faust_test();
+
+    // Then realtime 
+    //fft_denoise_test(); 
+    //rt_test();
     //test_api();
-    test_rtgraph();
+    //test_rtgraph();
     //test_complex_graph();
     //test_complex_graph2();
     //test_sndwrite();

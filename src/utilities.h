@@ -78,4 +78,11 @@ Flt* contiguous_memory(size_t bloc_size, size_t n_channels, Flt **d_ptr)
     return mem;
 }
 
+#define DEBUG
+static void print(std::string s) {
+#ifdef DEBUG
+    std::cout << s << std::endl;
+#endif
+}
+
 #endif

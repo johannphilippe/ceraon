@@ -16,28 +16,32 @@ struct faust_node : public node<Flt>, MapUI
 {
     faust_node(size_t blocsize = 128, size_t samplerate = 48000) 
         : node<Flt>::node(processor.getNumInputs(), processor.getNumOutputs(), blocsize, samplerate)
+        , process_cnt(0)
     {
         this->set_name("Faust");
         processor.buildUserInterface(this);
         processor.init(this->sample_rate);
-    }
-    void process(node<Flt> *previous)
-    {
-        Flt **inputs = nullptr;
-        if(this->n_inputs > 0) 
-            inputs = previous->outputs;
-        processor.compute(this->bloc_size, inputs, this->outputs);
 
-#ifdef DISPLAY
-        AsciiPlotter plot("Node", 80, 15);
-        std::vector<double> xdata(this->bloc_size);
-        for(size_t i = 0; i < this->bloc_size; ++i)
-            xdata[i] = i;
-        plot.addPlot(xdata, std::vector<double>(this->outputs[0], this->outputs[0] + this->bloc_size), "signal", '*');
-        plot.legend();
-        plot.show();
-#endif
+        if(this->n_inputs > 0)
+            inputs = new Flt*[this->n_inputs];
+        else
+            inputs = nullptr; 
     }
+    void process(connection<Flt> &previous)
+    {
+        if(this->n_inputs > 0)
+        {
+            for(size_t ch = previous.output_range.first, i = previous.input_offset;
+                ch <= previous.output_range.second; ++ch, ++i)
+                    inputs[i] = previous.target->outputs[ch];
+            process_cnt = (process_cnt + 1) % this->n_nodes_in;
+        }
+
+        if(process_cnt == 0) 
+            processor.compute(this->bloc_size, inputs, this->outputs);
+    }
+    size_t process_cnt;
+    Flt **inputs;
     P processor;
 };
 

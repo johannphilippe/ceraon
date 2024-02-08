@@ -26,7 +26,7 @@ struct sndread_node : public node<Flt>
         this->interleaved = new Flt[this->n_outputs * this->bloc_size];
     }
 
-    void process(node<Flt> *previous) override
+    void process(connection<Flt> &previous) override
     {
         size_t readcnt = _sf->readf(this->interleaved, this->bloc_size);
         for(size_t ch = 0; ch < this->n_outputs; ++ch)
@@ -48,6 +48,7 @@ struct sndwrite_node : public node<Flt>
 {
     sndwrite_node(std::string filepath, size_t inp = 1, size_t blocsize = 128, size_t samplerate = 48000)
         : node<Flt>::node(inp, inp, blocsize, samplerate)
+        , process_cnt(0)
     {
         this->set_name("SndWrite");
         _sf = std::make_unique<SndfileHandle>(filepath, SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_PCM_32, this->n_inputs, this->sample_rate);
@@ -58,23 +59,25 @@ struct sndwrite_node : public node<Flt>
         interleaved = new Flt[this->bloc_size * this->n_inputs];
     }
 
-    void process(node<Flt> *previous) override
+    void process(connection<Flt> &previous) override
     {
-        for(size_t i = 0; i < this->bloc_size; ++i)
+        for(size_t ch = previous.output_range.first, i = previous.input_offset;
+            ch <= previous.output_range.second; ++ch, ++i)
         {
-            for(size_t ch = 0; ch < this->n_inputs; ++ch)
+            for(size_t n = 0; n < this->bloc_size; ++n)
             {
-                size_t index = i * this->n_inputs + ch;
-                interleaved[index] = previous->outputs[ch][i];
+                size_t index = n * this->n_inputs + i;
+                interleaved[index] = previous.target->outputs[ch][n];
             }
+            std::copy(previous.target->outputs[ch], previous.target->outputs[ch]+previous.target->bloc_size, this->outputs[ch]);
+            process_cnt = (process_cnt + 1) % this->n_nodes_in;
         }
-                
-        _sf->writef(interleaved, this->bloc_size);
-
-        for(size_t ch = 0; ch < this->n_outputs; ++ch)
-            std::copy(previous->outputs[ch], previous->outputs[ch]+previous->bloc_size, this->outputs[ch]);
+        if(process_cnt == 0) 
+            _sf->writef(interleaved, this->bloc_size);
     }
 
+
+    size_t process_cnt;
     Flt *interleaved;
     std::unique_ptr<SndfileHandle> _sf;
 };

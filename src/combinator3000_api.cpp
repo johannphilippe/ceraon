@@ -135,7 +135,7 @@ void delete_graph(graph<double> *g) {delete g;}
 
 bool node_connect(node<double> *a, node<double> *b) {return a->connect(b);}
 bool node_disconnect(node<double> *a, node<double> *b) {return a->disconnect(b);}
-void node_process(node<double> *n, node<double> *previous) {n->process(previous);}
+void node_process(node<double> *n, connection<double> *previous) {n->process(*previous);}
 
 void csound_node_set_channel(void *cs_ptr, const char *name, double value)
 {
@@ -190,8 +190,6 @@ double faust_jit_get_param(void *faust_dsp, const char *name)
 
 void graph_add_node(graph<double> *g, node<double> *n) {g->add_node(n);}
 void graph_remove_node(graph<double> *g, node<double> *n) {g->remove_node(n);}
-void graph_add_output(graph<double> *g, node<double> *o) {g->add_output(o);}
-void graph_remove_output(graph<double> *g, node<double> *o) {g->remove_output(o);}
 
 void graph_process_bloc(graph<double> *g) {g->process_bloc();}
 
