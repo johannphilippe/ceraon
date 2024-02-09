@@ -1,4 +1,3 @@
-
 import("stdfaust.lib");
 
 fftSize = hslider("fftSize", 1024, 2, 16384, 1);       // global variable set by the processor itself

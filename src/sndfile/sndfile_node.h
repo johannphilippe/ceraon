@@ -51,12 +51,11 @@ struct sndwrite_node : public node<Flt>
         , process_cnt(0)
     {
         this->set_name("SndWrite");
-        _sf = std::make_unique<SndfileHandle>(filepath, SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_PCM_32, this->n_inputs, this->sample_rate);
-        //Flt *rawmem = contiguous_memory(this->bloc_size, this->n_inputs, this->outputs);
+        _sf = std::make_unique<SndfileHandle>(filepath, 
+            SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_PCM_32, this->n_inputs, this->sample_rate);
         this->outputs = new Flt*[this->n_inputs];
-        for(size_t i = 0; i < this->n_inputs; ++i)
-            this->outputs[i] = new Flt[this->bloc_size];
-        interleaved = new Flt[this->bloc_size * this->n_inputs];
+        main_mem->alloc_channels<Flt>(this->bloc_size, this->n_inputs, this->outputs);
+        interleaved = (Flt*)main_mem->mem_reserve(this->bloc_size * this->n_inputs * sizeof(Flt));
     }
 
     void process(connection<Flt> &previous) override
@@ -69,13 +68,13 @@ struct sndwrite_node : public node<Flt>
                 size_t index = n * this->n_inputs + i;
                 interleaved[index] = previous.target->outputs[ch][n];
             }
-            std::copy(previous.target->outputs[ch], previous.target->outputs[ch]+previous.target->bloc_size, this->outputs[ch]);
+            std::copy(previous.target->outputs[ch], 
+                previous.target->outputs[ch]+previous.target->bloc_size, this->outputs[ch]);
             process_cnt = (process_cnt + 1) % this->n_nodes_in;
         }
         if(process_cnt == 0) 
             _sf->writef(interleaved, this->bloc_size);
     }
-
 
     size_t process_cnt;
     Flt *interleaved;

@@ -9,7 +9,8 @@
 template<typename Flt = double>
 struct csound_node : public Csound, node<Flt>
 {
-    csound_node(std::string code, size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000)
+    csound_node(std::string code, size_t inp = 0, size_t outp = 0, 
+            size_t blocsize = 128, size_t samplerate = 48000)
         : node<Flt>::node(inp, outp, blocsize, samplerate)
         , process_cnt(0)
     {
@@ -43,7 +44,8 @@ struct csound_node : public Csound, node<Flt>
         std::cout << "Csound is ready to perform " << std::endl;
     }
 
-    static csound_node<Flt> *from_file(std::string path, size_t inp = 0, size_t outp = 0, size_t blocsize = 128, size_t samplerate = 48000)
+    static csound_node<Flt> *from_file(std::string path, size_t inp = 0, size_t outp = 0, 
+            size_t blocsize = 128, size_t samplerate = 48000)
     {
         std::string csd_str = read_file(path);
         return new csound_node<Flt>(csd_str, inp, outp, blocsize, samplerate);

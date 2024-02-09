@@ -9,6 +9,7 @@
 #include"faust/tests/square.hpp"
 #include "faust/tests/fftdel.hpp"
 #include "faust/tests/fftfreeze.hpp"
+#include "faust/tests/fftfilter.hpp"
 #include "csound/csound_node.h"
 #include "fft/fft_node.h"
 #include "sndfile/sndfile_node.h"
@@ -487,7 +488,7 @@ void test_sndread()
 void test_sndread_stereo()
 {
 
-    sndread_node<double> *s = new sndread_node<double>("/home/johann/Documents/tmp/Tears of exhaustion.wav", 128, 48000 );
+    sndread_node<double> *s = new sndread_node<double>("/home/johann/Documents/tmp/noisy.wav", 128, 48000 );
     node<double> *n = new node<double>(2, 2, 128, 48000);
 
     std::cout << "outputs : " << s->n_outputs << std::endl;
@@ -504,10 +505,10 @@ void test_sndread_stereo()
 
 void test_single()
 {
-    sndread_node<double> *s = new sndread_node<double>("/home/johann/Documents/tmp/Tears of exhaustion.wav", 128, 48000 );
+    sndread_node<double> *s = new sndread_node<double>("/home/johann/Documents/tmp/noisy.wav", 2048, 48000 );
 
     std::cout << "outputs : " << s->n_outputs << std::endl;
-    rtgraph<double> g(0, 2, 128, 48000);
+    rtgraph<double> g(0, 2, 2048, 48000);
 
     g.add_node(s);
     g.start_stream();
@@ -518,8 +519,139 @@ void test_single()
     }
 }
 
+// Works fine with a bit of glitch. Needs overlap add.
+void fft_denoiser_test()
+{
+
+    //faust_node<osc, double> *in = new faust_node<osc, double> (2048, 48000);
+    sndread_node<double> *sndin = new sndread_node<double>("/home/johann/Documents/tmp/tears.wav", 2048, 48000);
+    fft_node<double> *fft = new fft_node<double>(1, 3, 2048, 48000);
+    faust_node<fftfilter, double> *filt = new faust_node<fftfilter, double>(1024, 48000);
+    ifft_node<double> *ifft = new ifft_node<double>(3, 1, 2048, 48000);
+
+    sndin->connect({fft, {0, 0}, 0});
+    //fft->connect(ifft);
+    fft->connect(filt);
+    filt->connect(ifft);
+
+    filt->setParamValue("fftSize", 2048);
+    filt->setParamValue("cut", 150);
+    filt->setParamValue("gain", 0.0);
+    
+
+    rtgraph<double> g(0, 1, 2048, 48000);
+
+    g.add_node(sndin);
+    std::cout << g.generate_patchbook_code() << std::endl;
+    g.generate_faust_diagram();
+    g.start_stream();
+
+    while(true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+}
+
+void fft_gain_test()
+{
+
+    //faust_node<osc, double> *in = new faust_node<osc, double> (2048, 48000);
+    sndread_node<double> *sndin = new sndread_node<double>("/home/johann/Documents/tmp/tears.wav", 2048, 48000);
+    fft_node<double> *fft = new fft_node<double>(1, 3, 2048, 48000);
+    faust_node<fftfilter, double> *filt = new faust_node<fftfilter, double>(1023, 48000);
+    ifft_node<double> *ifft = new ifft_node<double>(3, 1, 2048, 48000);
+
+    sndin->connect(fft);
+    fft->connect(filt);
+    filt->connect(ifft);
+
+    filt->setParamValue("fftSize", 2048);
+    filt->setParamValue("cut", 1000);
+    filt->setParamValue("gain", 0.7);
+    
+    rtgraph<double> g(0, 1, 2048, 48000);
+
+    g.add_node(sndin);
+    std::cout << g.generate_patchbook_code() << std::endl;
+    g.generate_faust_diagram();
+    g.start_stream();
+
+    while(true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+}
+
+/*
+    Increasing and decreasing the bloc size 
+*/
+
+void test_upbloc()
+{
+    sndread_node<double> *sndin = new sndread_node<double>("/home/johann/Documents/tmp/tears.wav", 128, 48000);
+    upbloc<double> *up = new upbloc<double>(1, 1, 2048, 48000);
+    downbloc<double> *down = new downbloc<double>(1, 1, 128, 48000);
+
+    sndin->connect(up);
+    up->connect(down);
+
+    rtgraph<double> g(0, 1, 128, 48000);
+    g.add_node(sndin);
+
+    std::cout << g.generate_patchbook_code() << std::endl;
+
+    g.start_stream();
+
+    while(true)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+}
+
+
+// Overlap add
+void test_overlap_fft()
+{
+    faust_node<osc, double> *sndin = new faust_node<osc, double> (1024, 48000);
+    upbloc<double> *up = new upbloc<double>(1, 1, 4096, 48000);
+    over_fft<double> *fft = new over_fft<double>(1, 3, 4096, 48000, 2);
+    faust_node<fftfilter, double> *filt = new faust_node<fftfilter, double>(4096, 48000);
+    over_ifft<double> *ifft = new over_ifft<double>(3, 1, 4096, 48000, 2);
+
+    // Only returns buffers of 2048 
+    over_ifft_downbloc<double> *ifftdown = new over_ifft_downbloc<double>(1, 1, 4096, 48000, 2);
+    downbloc<double> *down = new downbloc<double>(1, 1, 1024, 48000);
+    sndwrite_node<double> *wr = new sndwrite_node<double>("/home/johann/Documents/tmp/overlap.wav", 1, 1024, 48000);
+
+    filt->setParamValue("fftSize", 2048);
+    filt->setParamValue("cut", 500);
+    filt->setParamValue("gain", 0.0);
+
+    sndin->connect(up);
+    up->connect(fft);
+    fft->connect(filt);
+    filt->connect(ifft);
+    ifft->connect(ifftdown);
+    ifftdown->connect(down);
+    down->connect(wr);
+    //fft->connect(ifft);
+    //filt->connect(ifft);
+    //ifft->connect(down);
+
+    graph<double> g(0, 1, 1024, 48000);
+    g.add_node(sndin);
+
+    std::cout << g.generate_patchbook_code() << std::endl;
+
+    //g.start_stream();
+
+    while(true)
+    {
+        g.process_bloc();
+    }
+}
+
 // Real complex situation : 
 // * Csound amp following on input driving a Faust synthesizer
+// * FFT denoising 
 
 int main()
 {
@@ -543,5 +675,9 @@ int main()
     //test_sndread();
     //test_sndread_stereo();
     //test_single();
+    //fft_denoiser_test();
+    //fft_gain_test();
+    //test_upbloc();
+    test_overlap_fft();
     return 0;
 }

@@ -15,10 +15,16 @@
     Node is the main half-abstract base class for DSP nodes
     It behaves like a linked list, where each node knows to which it is connected next (with pointers).
 */
+enum class node_init_mode
+{
+    no_alloc = 0,
+    alloc = 1
+};
 
 template<typename Flt = double>
 struct node
 {
+
     struct connection
     {
         node<Flt> *target = nullptr;
@@ -36,6 +42,8 @@ struct node
     };
 
     node(size_t inp = 0, size_t outp = 0, 
+        size_t blocsize = 128, size_t samplerate = 48000);
+    node(node_init_mode init_memory, size_t inp = 0, size_t outp = 0, 
         size_t blocsize = 128, size_t samplerate = 48000);
     virtual ~node();
 
@@ -73,7 +81,36 @@ struct channel_adapter : public node<Flt>
     channel_adapter(size_t inp = 0, size_t outp = 0, 
         size_t blocsize = 128, size_t samplerate = 48000);
     virtual void process(connection<Flt> &previous) override;
+    size_t process_count;
 };
+
+/*
+    Bloc size adapter
+    It has an internal circular buffer to increase bloc size while keeping sample rate
+*/
+template<typename Flt = double>
+struct upbloc : public node<Flt>
+{
+    upbloc(size_t inp = 1, size_t outp = 1, 
+        size_t blocsize = 128, size_t samplerate = 48000);
+
+    void process(connection<Flt> &previous) override;
+};
+
+template class upbloc<float>;
+template class upbloc<double>;
+
+template<typename Flt = double>
+struct downbloc : public node<Flt>
+{
+    downbloc(size_t inp = 1, size_t outp = 1, 
+        size_t blocsize = 128, size_t samplerate = 48000);
+
+    void process(connection<Flt> &previous) override;
+};
+
+template class downbloc<float>;
+template class downbloc<double>;
 
 /*
     Node mixer is used to merge several nodes outputs together
@@ -187,6 +224,7 @@ struct graph
     void process_bloc();
 
     std::string generate_patchbook_code();
+    void generate_faust_diagram();
 
     size_t n_inputs, n_outputs, bloc_size, sample_rate;
     std::vector<node<Flt>*> nodes;

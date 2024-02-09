@@ -1,6 +1,6 @@
 #include "combinator3000.h"
 #include<cstring>
-
+#include "comb_mem.h"
 
 template<typename Flt>
 node<Flt>::node( size_t inp, size_t outp, size_t blocsize, size_t samplerate)
@@ -12,8 +12,22 @@ node<Flt>::node( size_t inp, size_t outp, size_t blocsize, size_t samplerate)
 {
     this->set_name("Node");
     outputs = new Flt*[n_outputs];
-    for(size_t i = 0; i < n_outputs; ++i)
-        outputs[i] = new Flt[bloc_size];
+    outputs[0] = nullptr;
+    main_mem->alloc_channels<Flt>(bloc_size, n_outputs, outputs);
+}
+
+template<typename Flt>
+node<Flt>::node( node_init_mode init_memory, size_t inp, size_t outp, size_t blocsize, size_t samplerate)
+    : n_inputs(inp)
+    , n_outputs(outp)
+    , bloc_size(blocsize)
+    , sample_rate(samplerate)
+{
+    this->set_name("Node");
+    if(init_memory == node_init_mode::alloc) {
+        outputs = new Flt*[n_outputs];
+        main_mem->alloc_channels(bloc_size, n_outputs, outputs);
+    }
 }
 
 template<typename Flt>
@@ -39,7 +53,8 @@ bool node<Flt>::connect(node<Flt> *n, bool adapt_channels)
         if(adapt_channels) 
         {
             channel_adapter<Flt> *a = 
-                new channel_adapter<Flt>(this->n_outputs, n->n_inputs);
+                new channel_adapter<Flt>(this->n_outputs, n->n_inputs, 
+                    this->bloc_size, this->sample_rate);
             connections.push_back({a, {0, this->n_outputs - 1}, 0});
             a->n_nodes_in++;
             a->connect(n);
@@ -63,10 +78,12 @@ bool node<Flt>::connect(node<Flt> *n, bool adapt_channels)
 template<typename Flt>
 bool node<Flt>::connect(connection n, bool adapt_channels)
 {
+    /*
     if(n.output_range.first == 0
         && n.output_range.second == 0
         && n.input_offset == 0)
             return this->connect(n.target);
+    */
     size_t num_outputs = n.output_range.second - n.output_range.first + 1;
     size_t num_inputs = n.target->n_inputs - n.input_offset;
 
@@ -74,7 +91,7 @@ bool node<Flt>::connect(connection n, bool adapt_channels)
         || num_inputs > n.target->n_inputs)
     {
         std::cout << "connection<Flt> error - channels sizes must match node actual number of channels : " 
-            << this->get_name() << " >> tryging to connect to >> " 
+            << this->get_name() << " >> while trying to connect to >> " 
             << n.target->get_name() << std::endl;
         return false;
     }
@@ -83,17 +100,18 @@ bool node<Flt>::connect(connection n, bool adapt_channels)
     {
         connections.push_back(n);
         n.target->n_nodes_in++;
-    } else  // 
+    } else  
+        // the required connection asks more channels connected than target inputs
     {
-        if(adapt_channels) 
+        if(adapt_channels)  // Try to fit the number of desired outputs to the of inputs of target
         {
             channel_adapter<Flt> *a = 
-                new channel_adapter<Flt>(n_outputs, n_inputs, 
+                new channel_adapter<Flt>(num_outputs, num_inputs, 
                     this->bloc_size, this->sample_rate);
-            this->connect({a, n.output_range, 0});
+            this->connect({a, n.output_range, n.input_offset});
             a->n_nodes_in++;
             a->connect({n.target, {0, 0}, n.input_offset});
-        } else 
+        } else  // Some outputs will go to nothing (over the inputs limits of target)
         {
             size_t diff = num_outputs - num_inputs;
             this->connect({n.target, {n.output_range.first, n.output_range.second - diff}
@@ -146,6 +164,7 @@ template class node<float>;
 template<typename Flt>
 channel_adapter<Flt>::channel_adapter(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     : node<Flt>::node(inp, outp, blocsize, samplerate)
+    , process_count(0)
 {
     this->set_name("Channel adapter");
     size_t valid = std::max(this->n_inputs, this->n_outputs) 
@@ -155,16 +174,25 @@ channel_adapter<Flt>::channel_adapter(size_t inp, size_t outp, size_t blocsize, 
                 "Error in channel adapter - outputs must be even divisor of inputs. Here" 
             + std::to_string(this->n_inputs) + " " 
             + std::to_string(this->n_outputs));
+    
 }
 
 template<typename Flt>
 void channel_adapter<Flt>::process(connection<Flt> &previous)
 {
+    /*
+        Find a way 
+    
+    */
+   if(process_count == 0)
+    for(size_t i = 0; i < this->n_outputs; ++i)
+        std::memset(this->outputs[i], 0, sizeof(Flt) * this->bloc_size);
+
     if(this->n_outputs == 1)
     {
         for(size_t i = 0; i < this->bloc_size; ++i)
         {
-            Flt sum = 0;
+            Flt sum = 0.0;
             for(size_t ch = 0; ch < this->n_inputs; ++ch)
             {
                sum += previous.target->outputs[ch][i]; 
@@ -201,11 +229,56 @@ void channel_adapter<Flt>::process(connection<Flt> &previous)
             }
         }
     }
+    process_count = (process_count + 1) % this->n_nodes_in;
 }
 
 template class channel_adapter<double>;
 template class channel_adapter<float>;
 
+template<typename Flt>
+upbloc<Flt>::upbloc(size_t inp , size_t outp,
+        size_t blocsize, size_t samplerate)
+    : node<Flt>::node(inp, outp, blocsize, samplerate)
+{
+    this->set_name("Upbloc");
+}
+
+template<typename Flt>
+void upbloc<Flt>::process(connection<Flt> &previous) 
+{
+    size_t inp_bloc_size = previous.target->bloc_size;
+
+    for(size_t ch = previous.output_range.first, i = previous.input_offset;
+        ch <= previous.output_range.second; ++ch, ++i)
+    {
+        std::copy(this->outputs[i]+inp_bloc_size, 
+            this->outputs[i]+this->bloc_size, this->outputs[i]);
+        std::copy(previous.target->outputs[ch], 
+            previous.target->outputs[ch] + inp_bloc_size, 
+            this->outputs[i]+(this->bloc_size - inp_bloc_size));
+    }
+}
+
+template<typename Flt>
+downbloc<Flt>::downbloc(size_t inp , size_t outp,
+        size_t blocsize, size_t samplerate)
+    : node<Flt>::node(inp, outp, blocsize, samplerate)
+{
+    this->set_name("Downbloc");
+}
+
+template<typename Flt>
+void downbloc<Flt>::process(connection<Flt> &previous) 
+{
+    size_t inp_bloc_size = previous.target->bloc_size;
+    for(size_t ch = previous.output_range.first, i = previous.input_offset;
+        ch <= previous.output_range.second; ++ch, ++i)
+    {
+        std::copy(previous.target->outputs[ch] + (inp_bloc_size - this->bloc_size), 
+            previous.target->outputs[ch]+inp_bloc_size, this->outputs[i]);
+        
+    }
+}
 
 template<typename Flt>
 mixer<Flt>::mixer(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
@@ -450,6 +523,51 @@ void graph<Flt>::_generate_patchbook_code(std::string &c)
             c.append(s);
         }
     }
+}
+
+#include<map>
+
+// Todo finish this generator for nice diagrams
+template<typename Flt>
+void graph<Flt>::generate_faust_diagram()
+{
+    std::map<std::string, std::pair<int, int> > _modules;
+    for(auto & it : call_list) 
+    {
+        if(_modules.find(it.callee->get_name()) == _modules.end())
+            _modules[it.callee->get_name()] = {it.callee->n_inputs, it.callee->n_outputs};
+    }
+    std::string _modules_str;
+    for(auto & it : _modules)
+    {
+        std::string name = it.first;
+        std::replace(name.begin(), name.end(), ' ', '_');
+        std::string s = name + " = ";
+        std::string sep = "";
+        for(size_t i = 0; i < it.second.first; ++i) 
+        {
+            s.append(sep + " _");
+            sep = ",";
+        }
+
+        std::string op = (it.second.first > it.second.second) 
+                ? ":>" : (it.second.first < it.second.second)
+                ? "<:" : ":";
+
+        if(it.second.first > 0)
+            s.append(op);
+        sep = "";
+        for(size_t i = 0; i < it.second.second; ++i)
+        {
+            s.append(sep + " _");
+            sep = ",";
+        }
+        s.append(";\n");
+        _modules_str.append(s);
+
+    }
+
+    std::cout << _modules_str << std::endl;
 }
 
 template<typename Flt>

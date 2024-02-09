@@ -19,8 +19,19 @@
 
 // Windows
 inline double hanning(int index, int length) {
-    return  0.5 * (1 - cos(2 * M_PI * index / (length - 1 )));
+    return  0.5 * (1.0 - cos(2.0 * M_PI * double(index) / ( double(length) - 1.0 )));
 }
+
+constexpr static const double hamming_scaling_constant = 0.08;
+constexpr static const double hamming_scaling_factor = 1.0 / (1.0 - hamming_scaling_constant);
+inline double hamming(int index, int length) {
+    return 0.54 - (0.46 * cos(2 * M_PI * double(index) / ( double(length) - 1.)));
+}
+
+inline double blackman(int index, int length) {
+    return 0.42 - (0.5 * cos(2 * M_PI * index / (length - 1))) + (0.08 * cos(4 * M_PI * index / (length - 1)));
+}
+
 
 inline std::string read_file(std::string path)
 {
@@ -77,6 +88,8 @@ Flt* contiguous_memory(size_t bloc_size, size_t n_channels, Flt **d_ptr)
         d_ptr[i] = mem + (i * bloc_size);
     return mem;
 }
+
+
 
 #define DEBUG
 static void print(std::string s) {
