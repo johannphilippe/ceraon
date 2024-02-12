@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.15)
 
 project(combinator LANGUAGES CXX)
 
@@ -13,8 +13,17 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      set(LINUX ON)
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      set(MACOS ON)
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+      set(WIN ON)
+endif()
+
 option(TESTS "Build test executable" ON)
-option(BUILD_FFT_NODE "Build FFT node" ON)
 option(BUILD_FAUST_JIT_NODE "Build Faust JIT (require LLVM) node" ON)
 option(BUILD_CSOUND_NODE "Build Csound node" ON)
 option(BUILD_SNDFILE_NODE "Build Sndfile nodes" ON)
@@ -23,18 +32,6 @@ set(PLUGIN_NODES_LIB "")
 #############################################
 #  Build submodules and corresponding nodes
 #############################################
-add_subdirectory(./src/rtaudio)
-
-if(BUILD_FFT_NODE)
-      add_library(fft_node STATIC
-      ./src/fft/AudioFFT/AudioFFT.h 
-      ./src/fft/AudioFFT/AudioFFT.cpp
-      ./src/fft/fft_node.h)
-      target_include_directories(fft_node PUBLIC ./src)
-      set_property(TARGET fft_node PROPERTY POSITION_INDEPENDENT_CODE ON)
-      set(PLUGIN_NODES_LIB ${PLUGIN_NODES_LIB} fft_node)
-      add_compile_definitions(FFT_NODE)
-endif()
 
 if(BUILD_FAUST_JIT_NODE)
       add_library(faust_jit STATIC 
@@ -67,7 +64,14 @@ if(BUILD_SNDFILE_NODE)
       add_compile_definitions(SNDFILE_NODE)
 endif()
 
-#string(STRIP ${PLUGIN_NODES_LIB} PLUGIN_NODES_LIB)
+
+#############################################
+#    	        Audio Engines
+#############################################
+
+add_subdirectory(./src/rtaudio)
+add_subdirectory(./src/miniaudio)
+
 
 #############################################
 #    	Build Combinator 3000 library
@@ -83,16 +87,39 @@ set(COMBINATOR_SRC
     ./src/utilities.h
     ./include/combinator3000_api.h
     ./src/combinator3000_api.cpp
+    ./src/comb_mem.h
+    ./src/comb_mem.cpp
+    ./src/fft/AudioFFT/AudioFFT.h 
+    ./src/fft/AudioFFT/AudioFFT.cpp
+    ./src/fft/fft_node.h
     )
 
 ## Library
 add_library(combinator3000 SHARED
       ${COMBINATOR_SRC})
 
-target_link_libraries(combinator3000 PRIVATE pthread)
-target_link_libraries(combinator3000 PUBLIC ${PLUGIN_NODES_LIB})
+target_link_libraries(combinator3000 PUBLIC 
+      ${PLUGIN_NODES_LIB} 
+      miniaudio 
+      rtaudio)
 
-target_include_directories(combinator3000 PUBLIC ./include ./src)
+target_include_directories(combinator3000 PUBLIC 
+      ./include 
+      ./src 
+      ./src/miniaudio)
+
+if(LINUX)
+      target_link_libraries(combinator3000 PRIVATE 
+            pthread 
+            asound 
+            jack 
+            pulse
+            m
+            dl
+            atomic
+            )
+endif()
+
 
 #############################################
 #    	Build Combinator 3000 tests
@@ -100,7 +127,6 @@ target_include_directories(combinator3000 PUBLIC ./include ./src)
 
 if(TESTS)
       add_executable(combinator3000_test
-            ${COMBINATOR_SRC}
             ./src/faust/tests/osc.hpp
             ./src/faust/tests/square.hpp
             ./src/faust/tests/filter.hpp
@@ -109,7 +135,20 @@ if(TESTS)
             ./src/tests/test.cpp
             )
 
-      target_link_libraries(combinator3000_test PUBLIC pthread sndfile rtaudio)
-      target_link_libraries(combinator3000_test PUBLIC ${PLUGIN_NODES_LIB})
-      target_include_directories(combinator3000_test PUBLIC ./src)
+      target_link_libraries(combinator3000_test PUBLIC 
+            pthread 
+            sndfile 
+            rtaudio 
+            miniaudio 
+            atomic
+            combinator3000
+            ${PLUGIN_NODES_LIB})
+
+      target_include_directories(combinator3000_test PUBLIC 
+            ./src 
+            ./src/miniaudio
+            )
+      target_compile_definitions(combinator3000_test 
+            PRIVATE 
+            MINIAUDIO_IMPLEMENTATION)
 endif()

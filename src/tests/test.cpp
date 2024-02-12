@@ -17,6 +17,8 @@
 
 #include "sndfile.hh"
 
+#define MINIAUDIO_IMPLEMENTATION
+
 void simple_test()
 {
     faust_node<osc, double> *o = new faust_node<osc, double>(1024);
@@ -607,54 +609,339 @@ void test_upbloc()
 }
 
 
-// Overlap add
-void test_overlap_fft()
+void sig_to_csv(std::vector<double> &v, std::string path)
 {
-    faust_node<osc, double> *sndin = new faust_node<osc, double> (1024, 48000);
-    upbloc<double> *up = new upbloc<double>(1, 1, 4096, 48000);
-    over_fft<double> *fft = new over_fft<double>(1, 3, 4096, 48000, 2);
-    faust_node<fftfilter, double> *filt = new faust_node<fftfilter, double>(4096, 48000);
-    over_ifft<double> *ifft = new over_ifft<double>(3, 1, 4096, 48000, 2);
+    std::string s;
+    std::string sep = "";
+    for(auto & it : v)
+    {
+        s = s + sep + std::to_string(it);
+        sep = ", ";
+    }
 
-    // Only returns buffers of 2048 
-    over_ifft_downbloc<double> *ifftdown = new over_ifft_downbloc<double>(1, 1, 4096, 48000, 2);
-    downbloc<double> *down = new downbloc<double>(1, 1, 1024, 48000);
-    sndwrite_node<double> *wr = new sndwrite_node<double>("/home/johann/Documents/tmp/overlap.wav", 1, 1024, 48000);
+    std::ofstream ofs(path);
+    ofs << s;
+    ofs.close();
+}
 
-    filt->setParamValue("fftSize", 2048);
-    filt->setParamValue("cut", 500);
-    filt->setParamValue("gain", 0.0);
+/*
+http://recherche.ircam.fr/pub/dafx11/Papers/27_e.pdf
+Beau papier sur l'overlap/add : https://perso.telecom-paristech.fr/gpeeters/doc/Peeters_2001_PhDThesisv1.1.pdf
+Another one https://ccrma.stanford.edu/~jos/OLA/OLA_2up.pdf
+https://dsp.stackexchange.com/questions/13436/choosing-the-right-overlap-for-a-window-function/33615#33615
 
-    sndin->connect(up);
-    up->connect(fft);
-    fft->connect(filt);
-    filt->connect(ifft);
-    ifft->connect(ifftdown);
-    ifftdown->connect(down);
-    down->connect(wr);
-    //fft->connect(ifft);
-    //filt->connect(ifft);
+https://holometer.fnal.gov/GH_FFT.pdf
+*/
+
+#include "sndfile.hh"
+#include"fft/AudioFFT/AudioFFT.h"
+void test_pure_fft()
+{
+    size_t bsize = 128;
+    size_t fftsize = 8192;
+    size_t overlap = 16;
+    size_t hop_size = fftsize / overlap;
+    size_t complex_size = audiofft::AudioFFT::ComplexSize(fftsize);
+
+    SndfileHandle r("/home/johann/Documents/tmp/field.wav", SFM_READ);
+    SndfileHandle w("/home/johann/Documents/tmp/tearsFFT.wav", SFM_WRITE, r.format(), r.channels(), r.samplerate());
+
+    audio_context ctx{0, r.channels(), bsize, r.samplerate()};
+
+    node<double> *dummy = new node<double>(0, 3, complex_size, r.samplerate());
+    faust_node<fftfilter, double> * f = new faust_node<fftfilter, double>(fftsize, r.samplerate());
+    connection<double> c{dummy, {0, 2}, 0};
+    f->n_nodes_in = 1;
+    f->setParamValue("cut", 500);
+    f->setParamValue("fftSize", fftsize);
+    f->setParamValue("gain", 0);
+
+    double fq_resolution = double(r.samplerate()) / double(fftsize);
+
+    std::vector<audiofft::AudioFFT>ffts(r.channels());
+    for(auto & it : ffts)
+        it.init(fftsize);
+
+    double *read_buf = new double[bsize*r.channels()]();
+    double *winbuf = new double[fftsize]();
+    double **fft_bufs = new double*[r.channels()]();
+    for(size_t i = 0; i < r.channels(); ++i)
+        fft_bufs[i] = new double[fftsize]();
+
+
+    double **overlap_bufs = new double*[r.channels() * overlap]();
+    for(size_t i = 0; i < (r.channels() * overlap); ++i)
+        overlap_bufs[i] = new double[fftsize]();
+
+    double **out_bufs = new double *[r.channels()]();
+    for(size_t i = 0; i < r.channels(); ++i)
+        out_bufs[i] = new double[hop_size];
+
+    double **complex_bufs = new double*[r.channels() * 3];
+    for(size_t i = 0; i < r.channels(); ++i)
+    {
+        complex_bufs[i*3] = new double[complex_size](); 
+        complex_bufs[i*3+1] = new double[complex_size](); 
+        complex_bufs[i*3+2] = new double[complex_size]; 
+        for(size_t n = 0; n < complex_size; ++n)
+            complex_bufs[i*3+2][n] = n;
+    }
+
+    std::cout << "All init/alloc ok " << std::endl;
+    
+    size_t cnt = 0;
+    while(r.readf(read_buf, bsize) > 0)
+    {
+        // deinterleave
+        for(size_t ch = 0; ch < r.channels(); ++ch)
+            for(size_t i = 0; i < bsize; ++i)
+                fft_bufs[ch][(fftsize-hop_size)+cnt+i] = read_buf[i * r.channels() + ch];
+
+        std::cout << "Deinterleaved " << std::endl;
+        
+        std::cout << "FFT Processed " << std::endl;
+
+        // read in outbufs to fill interleaved sndfile buffer
+        for(size_t ch = 0; ch < r.channels(); ++ch)
+        {
+            for(size_t i = 0; i < bsize; ++i)
+            {
+                read_buf[i*r.channels()+ch] = out_bufs[ch][i+cnt];
+            }
+        }
+
+        std::cout << "Interleaved " << std::endl;
+        w.writef(read_buf, bsize);
+        std::cout << "wrote to snd out  " << std::endl;
+        cnt = (cnt + bsize) % hop_size ;
+        if(cnt == 0 ) // process fft
+        {
+            for(size_t ch = 0; ch < r.channels(); ++ch)
+            {
+                for(size_t n = 0; n < fftsize; ++n)
+                {
+                    winbuf[n] = fft_bufs[ch][n] * hanning(n, fftsize);
+                }
+                ffts[ch].fft(winbuf, complex_bufs[ch*3], complex_bufs[ch*3+1]);
+                // Copy to give room for further input samples at (fftsize - hop_size)
+                std::copy(fft_bufs[ch]+hop_size, fft_bufs[ch]+fftsize, fft_bufs[ch]);
+
+                // Do something with FFT Here
+                std::cout << "copy to dummy" << std::endl;
+                for(size_t i = 0; i < 3; ++i)
+                    std::copy(complex_bufs[ch*3+i], complex_bufs[ch*3+i]+complex_size, dummy->outputs[i]);
+                std::cout << "faust process " << std::endl;
+                f->process(c, ctx);
+                std::cout  << "processed, recopying " << std::endl;
+                for(size_t i = 0; i < 3; ++i)
+                    std::copy(f->outputs[i], f->outputs[i]+complex_size, complex_bufs[ch*3+i]);
+                std::cout << "all ok " << std::endl;
+
+
+                // First copy all overlaps to the next one and IFFT to the first one
+                // Could be done with circular buffers instead (save computation)
+                for(size_t o = (overlap - 1); o > 0; o--)
+                    std::copy(overlap_bufs[ch*overlap+(o-1)], overlap_bufs[ch*overlap+(o-1)] + fftsize, overlap_bufs[ch*overlap+o]);
+                /*
+                for(size_t o = 0; o < (overlap-1) ; ++o)
+                    std::copy(overlap_bufs[ch*overlap+o], overlap_bufs[ch*overlap+o] + fftsize, overlap_bufs[ch*overlap+o+1]);
+                */
+
+                //ffts[ch].ifft(overlap_bufs[ch*overlap], complex_bufs[ch*3], complex_bufs[ch*3+1]);
+                ffts[ch].ifft(overlap_bufs[ch*overlap], complex_bufs[ch*3], complex_bufs[ch*3+1]);
+                //std::copy(overlap_bufs[ch*overlap], overlap_bufs[ch*overlap] + hop_size, out_bufs[ch]);
+                for(size_t n = 0; n < fftsize; ++n)
+                {
+
+                    size_t mod = fftsize / (overlap/2);
+                    //overlap_bufs[ch*overlap][n] *= (hanning(n%mod, mod)) ;
+                    //overlap_bufs[ch*overlap][n] *= (root_hann(n%mod, mod)) ;
+                    overlap_bufs[ch*overlap][n] *= hanning(n, fftsize);
+                }
+
+                // Checking overlap bufs
+                std::vector<double> xdata(fftsize);
+                std::vector<double> ydata(fftsize);
+                for(size_t i = 0; i < fftsize; ++i)
+                {
+                    xdata[i] = i;
+                }
+                for(size_t y = 0; y < overlap; ++y)
+                {
+                    AsciiPlotter p(std::string("Overlap buffs channel " + std::to_string(ch)) , 90, 15);
+                    for(size_t i = 0; i < fftsize; ++i)
+                        ydata[i] = overlap_bufs[ch*overlap+y][i];
+                    p.addPlot(xdata, ydata, std::string("overlap" + std::to_string(y)), '*');
+                    p.show();
+                }
+
+                for(size_t n = 0; n < hop_size; ++n)
+                {
+                    double sum = 0.0;
+                    // Working with overlap 2
+                    /*for(size_t o = 0; o < overlap; ++o )
+                    {
+                        size_t pos_index = (overlap-1) - o;
+                        size_t pos_offset = pos_index * hop_size;
+                        //sum += overlap_bufs[ch*overlap+o][pos_offset+n];
+                        
+                        // This one works for overlap 2 
+                        sum += overlap_bufs[ch*overlap+o][n+(o*hop_size)];
+                    }
+                    */
+
+                   // This works, but only sums/computes last incoming 2 overlaps segments
+                   // Needs the windowing to be done on fftsize/(overlap/2) times 
+                   
+                   /*size_t mod = (overlap / 2);
+                   for(size_t o = 0; o < 2; ++o)
+                   {   
+                        sum += (overlap_bufs[ch*overlap+o][n+(o*hop_size)]);
+                   }
+                   sum *= overlap*mod;
+                   */
+
+                // This method works fine (with or without synthesis windowing)
+                // If synthesis windowing (WOLA) > big fft size with small overlap create LFO on amplitude
+                  for(size_t m = 0; m < overlap; ++m)
+                  {
+                    sum += overlap_bufs[ch*overlap+m][n+(m*hop_size)];
+                  }
+                  double nwindows = (overlap / 2);
+                  sum /= (nwindows);
+                   
+                
+                  /*for(size_t m = 0; m < overlap; ++m)
+                  {
+                    size_t w_index = ((overlap-m)%overlap) * hop_size;
+                    sum += overlap_bufs[ch*overlap+m][n+(m*hop_size)] * hanning( (w_index + n), fftsize );
+                  }
+                  */
+
+                   // This produces no glitch, but a windowing LFO
+                   /*
+                   for(size_t m = 0; m < overlap; ++m)
+                   {
+                        size_t nm = (m+2) % overlap;
+                        sum += overlap_bufs[ch*overlap+m][n+(nm*hop_size)] * root_hann( (n+(m*hop_size))%hop_size, hop_size);
+                   }
+                   sum /= overlap;
+                    */
+
+                   // This works, but creates some time stretching and spectral stuff
+                   // Also create LFO for overlap 2 (not 4)
+                   /*for(size_t m = 0; m < overlap; ++m)
+                   {
+                        sum += overlap_bufs[ch*overlap+m][(fftsize-(m*hop_size)-hop_size)+n] * root_hann(n+(m*hop_size), fftsize);
+                   }*/
+
+
+
+
+
+                   /*
+                   for(size_t m = 0; m < overlap; ++m)
+                   {
+                    for(size_t o = 0; o < overlap; ++o)
+                    {
+                        size_t idx = (o + m) % overlap;
+                        sum += overlap_bufs[ch*overlap+o][n+(idx*hop_size)];
+                    }
+                   }
+                   sum /= overlap;
+                   */
+                   /*
+                   size_t mod = fftsize / (overlap);
+                   for(size_t o = 0; o < overlap; ++o)
+                   {
+                        sum += overlap_bufs[ch*overlap+o][n+(o*hop_size)];
+                   }
+                   */
+
+                    // Try to "combine" windows by multiplying them 
+
+                    out_bufs[ch][n] = sum;
+                }
+                std::cout << "\n\n" << std::endl;
+                AsciiPlotter pp("Outbuf", 90, 15);
+                xdata.resize(hop_size);
+                ydata.resize(hop_size);
+                for(size_t i = 0; i < hop_size; ++i)
+                {
+                    xdata[i] = i;
+                    ydata[i] = out_bufs[ch][i];
+                }
+                pp.addPlot(xdata, ydata, "Output", '-');
+                pp.show();
+            }
+        }
+
+    }
+};
+
+
+void test_ola_fft_nodes()
+{
+    size_t fft_size = 8192;
+    size_t overlap = 16;
+    size_t sr = 48000;
+    size_t bloc_size = 64;
+
+    sndread_node<double> *snd = new sndread_node<double>("/home/johann/Documents/tmp/tearsmono.wav", bloc_size);    
+    ola_fft<double> *fft = new ola_fft<double>(1, 3, fft_size, overlap, sr);
+    faust_node<fftfilter, double> *f = new faust_node<fftfilter, double>(fft_size, sr);
+    ola_ifft<double> *ifft = new ola_ifft<double>(3, 1, fft_size, overlap, sr);
+    //circular_downbloc<double> *down = new circular_downbloc<double>(1, 1, bloc_size, sr);
+    sndwrite_node<double> *w = new sndwrite_node<double>("/home/johann/Documents/tmp/OLATest.wav", 1, bloc_size, sr);
+
+    f->setParamValue("fftSize", fft_size);
+    f->setParamValue("gain", 0.05);
+    f->setParamValue("cut", 600.0);
+    
+    snd->connect(fft);
+    fft->connect(f);
+    f->connect(ifft);
+    ifft->connect(w);
     //ifft->connect(down);
+    //down->connect(w);
 
-    graph<double> g(0, 1, 1024, 48000);
-    g.add_node(sndin);
-
+    mini_rtgraph<double> g(0, 1, bloc_size, sr);
+    g.add_node(snd);
     std::cout << g.generate_patchbook_code() << std::endl;
 
-    //g.start_stream();
-
+    g.start_stream();
     while(true)
-    {
-        g.process_bloc();
-    }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
 }
 
 // Real complex situation : 
 // * Csound amp following on input driving a Faust synthesizer
 // * FFT denoising 
 
+
+#include<signal.h>
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+void segfault_sigaction(int signal, siginfo_t *si, void *arg)
+{
+    ucontext_t *ctx = (ucontext_t *)arg;
+    ctx->uc_mcontext.gregs[REG_RIP]++;
+    printf("Exception segfault at %p\n", si->si_addr);
+    exit(0);
+}
+
 int main()
 {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(struct sigaction));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_sigaction = segfault_sigaction;
+    sa.sa_flags = SA_SIGINFO;
+    sigaction(SIGSEGV, &sa, NULL);
+
+
     //simple_test();
     //mix_test();
 
@@ -678,6 +965,13 @@ int main()
     //fft_denoiser_test();
     //fft_gain_test();
     //test_upbloc();
-    test_overlap_fft();
+    //test_nonoverlap_fft();
+    //test_ola();
+    
+
+    // Simple test of working OLA FFT transform > Working 
+    //test_pure_fft();
+
+    test_ola_fft_nodes();
     return 0;
 }

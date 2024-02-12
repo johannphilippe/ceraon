@@ -1077,8 +1077,8 @@ namespace audiofft
       {
         if (_size > 0)
         {
-          fftwf_destroy_plan(_planForward);
-          fftwf_destroy_plan(_planBackward);
+          fftw_destroy_plan(_planForward);
+          fftw_destroy_plan(_planBackward);
           _planForward = 0;
           _planBackward = 0;
           _size = 0;
@@ -1086,19 +1086,19 @@ namespace audiofft
 
           if (_data)
           {
-            fftwf_free(_data);
+            fftw_free(_data);
             _data = 0;
           }
 
           if (_re)
           {
-            fftwf_free(_re);
+            fftw_free(_re);
             _re = 0;
           }
 
           if (_im)
           {
-            fftwf_free(_im);
+            fftw_free(_im);
             _im = 0;
           }
         }
@@ -1108,16 +1108,16 @@ namespace audiofft
           _size = size;
           _complexSize = AudioFFT::ComplexSize(_size);
           const size_t complexSize = AudioFFT::ComplexSize(_size);
-          _data = reinterpret_cast<double*>(fftwf_malloc(_size * sizeof(double)));
-          _re = reinterpret_cast<double*>(fftwf_malloc(complexSize * sizeof(double)));
-          _im = reinterpret_cast<double*>(fftwf_malloc(complexSize * sizeof(double)));
+          _data = reinterpret_cast<double*>(fftw_malloc(_size * sizeof(double)));
+          _re = reinterpret_cast<double*>(fftw_malloc(complexSize * sizeof(double)));
+          _im = reinterpret_cast<double*>(fftw_malloc(complexSize * sizeof(double)));
 
           fftw_iodim dim;
           dim.n = static_cast<int>(size);
           dim.is = 1;
           dim.os = 1;
-          _planForward = fftwf_plan_guru_split_dft_r2c(1, &dim, 0, 0, _data, _re, _im, FFTW_MEASURE);
-          _planBackward = fftwf_plan_guru_split_dft_c2r(1, &dim, 0, 0, _re, _im, _data, FFTW_MEASURE);
+          _planForward = fftw_plan_guru_split_dft_r2c(1, &dim, 0, 0, _data, _re, _im, FFTW_MEASURE);
+          _planBackward = fftw_plan_guru_split_dft_c2r(1, &dim, 0, 0, _re, _im, _data, FFTW_MEASURE);
         }
       }
     }
@@ -1125,7 +1125,7 @@ namespace audiofft
     virtual void fft(const double* data, double* re, double* im) override
     {
       ::memcpy(_data, data, _size * sizeof(double));
-      fftwf_execute_split_dft_r2c(_planForward, _data, _re, _im);
+      fftw_execute_split_dft_r2c(_planForward, _data, _re, _im);
       ::memcpy(re, _re, _complexSize * sizeof(double));
       ::memcpy(im, _im, _complexSize * sizeof(double));
     }
@@ -1134,15 +1134,15 @@ namespace audiofft
     {
       ::memcpy(_re, re, _complexSize * sizeof(double));
       ::memcpy(_im, im, _complexSize * sizeof(double));
-      fftwf_execute_split_dft_c2r(_planBackward, _re, _im, _data);
+      fftw_execute_split_dft_c2r(_planBackward, _re, _im, _data);
       detail::ScaleBuffer(data, _data, 1.0f / static_cast<double>(_size), _size);
     }
 
   private:
     size_t _size;
     size_t _complexSize;
-    fftwf_plan _planForward;
-    fftwf_plan _planBackward;
+    fftw_plan _planForward;
+    fftw_plan _planBackward;
     double* _data;
     double* _re;
     double* _im;

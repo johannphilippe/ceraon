@@ -12,6 +12,39 @@
 #include "utilities.h"
 
 /*
+    Forward declaration
+*/
+template<typename>
+struct graph;
+template<typename>
+struct node;
+
+template<typename Flt>
+struct connection
+{
+    node<Flt> *target = nullptr;
+    std::pair<size_t, size_t> output_range = {0, 0};
+    size_t input_offset = 0;
+    node<Flt> *parent = nullptr;
+
+    size_t get_num_outputs() {return output_range.second - output_range.first + 1;}
+    static std::vector<connection> vec_from_nodes(std::vector<node<Flt>*> &n) {
+        std::vector<connection> nv(n.size());
+        for(size_t i = 0; i < n.size(); ++i)
+            nv.push_back(connection{n[i]});
+        return nv;
+    }
+};
+
+struct audio_context
+{
+    size_t n_inputs, 
+        n_outputs,
+        bloc_size, 
+        samplerate;
+};
+
+/*
     Node is the main half-abstract base class for DSP nodes
     It behaves like a linked list, where each node knows to which it is connected next (with pointers).
 */
@@ -25,36 +58,18 @@ template<typename Flt = double>
 struct node
 {
 
-    struct connection
-    {
-        node<Flt> *target = nullptr;
-        std::pair<size_t, size_t> output_range = {0, 0};
-        size_t input_offset = 0;
-        node<Flt> *parent = nullptr;
-
-        size_t get_num_outputs() {return output_range.second - output_range.first + 1;}
-        static std::vector<connection> vec_from_nodes(std::vector<node<Flt>*> &n) {
-            std::vector<connection> nv(n.size());
-            for(size_t i = 0; i < n.size(); ++i)
-                nv.push_back(connection{n[i]});
-            return nv;
-        }
-    };
-
     node(size_t inp = 0, size_t outp = 0, 
-        size_t blocsize = 128, size_t samplerate = 48000);
-    node(node_init_mode init_memory, size_t inp = 0, size_t outp = 0, 
-        size_t blocsize = 128, size_t samplerate = 48000);
+        size_t blocsize = 128, size_t samplerate = 48000, bool alloc_memory = true);
     virtual ~node();
 
     bool connect(node *n, bool adapt_channels = true);
-    bool connect(connection n, bool adapt_channels = true);
+    bool connect(connection<Flt> n, bool adapt_channels = true);
     bool disconnect(node *n);
     
     void set_name(std::string n);
     std::string &get_name();
 
-    virtual void process(connection &previous);
+    virtual void process(connection<Flt> &previous, audio_context &ctx);
 
     /* 
         Keep these four members at the beginning of the struct 
@@ -63,13 +78,10 @@ struct node
     size_t n_inputs, n_outputs, bloc_size, sample_rate;
     
     size_t n_nodes_in;
-    std::vector<connection> connections;
+    std::vector< connection<Flt> > connections;
     Flt **outputs;
     std::string name;
 };
-
-template<typename Flt>
-using connection = typename node<Flt>::connection;
 
 /*
     Channel adapter merges or sums channels to enable
@@ -80,7 +92,7 @@ struct channel_adapter : public node<Flt>
 {
     channel_adapter(size_t inp = 0, size_t outp = 0, 
         size_t blocsize = 128, size_t samplerate = 48000);
-    virtual void process(connection<Flt> &previous) override;
+    virtual void process(connection<Flt> &previous, audio_context &ctx) override;
     size_t process_count;
 };
 
@@ -94,7 +106,7 @@ struct upbloc : public node<Flt>
     upbloc(size_t inp = 1, size_t outp = 1, 
         size_t blocsize = 128, size_t samplerate = 48000);
 
-    void process(connection<Flt> &previous) override;
+    void process(connection<Flt> &previous, audio_context &ctx) override;
 };
 
 template class upbloc<float>;
@@ -106,7 +118,7 @@ struct downbloc : public node<Flt>
     downbloc(size_t inp = 1, size_t outp = 1, 
         size_t blocsize = 128, size_t samplerate = 48000);
 
-    void process(connection<Flt> &previous) override;
+    void process(connection<Flt> &previous, audio_context &ctx) override;
 };
 
 template class downbloc<float>;
@@ -120,7 +132,7 @@ struct mixer : public node<Flt>
 {
     mixer(size_t inp = 0, size_t outp = 0, 
         size_t blocsize = 128, size_t samplerate = 48000);
-    virtual void process(connection<Flt> &previous) override;
+    virtual void process(connection<Flt> &previous, audio_context &ctx) override;
 
     size_t process_count;
 };
@@ -137,7 +149,7 @@ struct simple_upsampler : public node<Flt>
         size_t bloc_size = 128, size_t samplerate= 48000, 
         size_t order = 10, size_t steep = 1);
     ~simple_upsampler();
-    void process(connection<Flt> &revious) override;
+    void process(connection<Flt> &revious, audio_context &ctx) override;
 
     size_t f_order, f_steep;
     std::vector<halfband *> filters;
@@ -159,7 +171,7 @@ struct upsampler : public node<Flt>
         size_t bloc_size = 128, size_t samplerate= 48000, 
         size_t num_cascade = 1, size_t order = 10, size_t steep = 1);
     ~upsampler();
-    void process(connection<Flt> &previous) override;
+    void process(connection<Flt> &previous, audio_context &ctx) override;
 
     size_t n_cascade, f_order, f_steep, n_samps_iter;
     std::vector<simple_upsampler<Flt>*> upsamplers;
@@ -177,7 +189,7 @@ struct downsampler : public node<Flt>
         size_t bloc_size = 128, size_t samplerate= 48000, 
         size_t num_cascade = 1, size_t order = 10, size_t steep = 1);
     ~downsampler();
-    void process(connection<Flt> &previous) override;
+    void process(connection<Flt> &previous, audio_context &ctx) override;
 
     size_t n_cascade, f_order, f_steep, n_samps_iter;
     std::vector<half_cascade *>decimators;
@@ -229,21 +241,24 @@ struct graph
     size_t n_inputs, n_outputs, bloc_size, sample_rate;
     std::vector<node<Flt>*> nodes;
 
-
+    // Nodes used as inputs/outputs for the graph
     std::shared_ptr<mixer<Flt>> _mix;
     std::shared_ptr<node<Flt>> _input_node;
     connection<Flt>  _input_connection;
 
+    // List of connections used in 
     std::vector<connection<Flt> > _node_connections;
-
+    
+    // Thread safety
     std::recursive_mutex _mtx;
+
+    audio_context context;
 protected:
     std::vector<call_grape> to_call, next_call;
     std::vector<call_grape> *to_call_ptr, *next_call_ptr;
 
     void _generate_patchbook_code( std::string &s);
     
-    //std::vector<call_event> call_list;
     std::vector<call_t> call_list;
     void _generate_event_list();
     void _remove_duplicates();
@@ -282,10 +297,30 @@ struct rtgraph : public graph<Flt>
     RtAudio::StreamParameters output_parameters, input_parameters;
     std::shared_ptr<RtAudio::StreamOptions> _options;
 };
-
 template<typename Flt>
 using call_event = typename graph<Flt>::call_event;
 
 template class rtgraph<double>;
+
+extern "C" {
+#include "miniaudio.h"
+}
+
+static void  miniaudio_cbk(ma_device *device, void* outputs, 
+    const void *inputs, ma_uint32 frame_count);
+
+template<typename Flt>
+struct mini_rtgraph : public graph<Flt>
+{
+    mini_rtgraph(size_t inp = 1, size_t outp = 1,
+        size_t blocsize = 128, size_t samplerate = 48000);
+    void start_stream();
+    void stop_stream();
+
+    void list_devices();
+
+    ma_device device;
+    ma_device_config config;
+};
 
 #endif

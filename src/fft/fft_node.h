@@ -11,7 +11,7 @@ template<typename Flt = double>
 struct fft_node : public node<Flt>
 {
     fft_node(size_t inp = 1, size_t outp = 3, size_t blocsize = 128, size_t samplerate = 48000)
-        : node<Flt>::node(node_init_mode::no_alloc, inp, outp, blocsize, samplerate)
+        : node<Flt>::node(inp, outp, blocsize, samplerate, false)
         , ffts(inp)
     {
         if(this->n_outputs != (this->n_inputs * 3)) {
@@ -35,7 +35,7 @@ struct fft_node : public node<Flt>
             it.init(this->bloc_size);
     }
 
-    void process(connection<Flt> &previous) override 
+    void process(connection<Flt> &previous, audio_context &ctx) override 
     {
         for(size_t ch = previous.output_range.first, i = previous.input_offset; 
             ch <= previous.output_range.second; ++ch, ++i)
@@ -67,7 +67,7 @@ struct ifft_node : public node<Flt>
             it.init(this->bloc_size);
     }
 
-    void process(connection<Flt> &previous) override 
+    void process(connection<Flt> &previous, audio_context &ctx) override 
     {
         for(size_t ch = previous.output_range.first, i = previous.input_offset;
             ch <= previous.output_range.second; ch+=3, ++i)
@@ -82,185 +82,211 @@ struct ifft_node : public node<Flt>
     std::vector<audiofft::AudioFFT> ffts;
 };
 
+
+// Information for OLA update and offsets
+struct circular_info
+{
+    size_t position;
+    bool update;
+};
+
 /*
-    FFT with overlap  and windowing
+    Implementation of OLA / WOLA FFT 
 */
 
 template<typename Flt = double>
-struct over_fft : public node<Flt>
+struct ola_fft : public node<Flt>
 {
-    over_fft(size_t inp = 1, size_t outp = 3,  
-        size_t blocsize = 1024, size_t samplerate = 48000, size_t overlap = 2)
-        : node<Flt>::node(node_init_mode::no_alloc, inp, outp, blocsize, samplerate)
+    ola_fft(size_t inp, size_t outp, size_t fftsize, size_t overlap, size_t samplerate)
+        : node<Flt>::node(inp, outp, fftsize, samplerate, false)
+        , fft_size(fftsize)
         , n_overlap(overlap)
-        , win_count(n_overlap * 2 - 1)
-        , hop_size(blocsize / n_overlap )
-        , complex_size(audiofft::AudioFFT::ComplexSize(hop_size))
+        , hop_size(fft_size/n_overlap)
+        , complex_size(audiofft::AudioFFT::ComplexSize(fft_size))
+        , circular_offsets(inp)
         , ffts(inp)
     {
-        if(this->n_outputs != (this->n_inputs * 3)) {
-            throw std::runtime_error("FFT outputs must be 3 times its inputs");
-        }
-        this->set_name("OverlapFFT");
-        size_t nbufs = this->n_inputs * 3;
-        this->outputs = new Flt*[nbufs];
+        if(!is_power_of_two(fft_size))
+            throw std::runtime_error("OLA FFT size must be power of two");
+
+        if(this->n_outputs  != (this->n_inputs * 3) )
+            throw std::runtime_error("OLA FFT Output number must be 3 times input number");
         
-        main_mem->alloc_channels<Flt>(this->bloc_size, nbufs, this->outputs);
-        
-        // Also need a single buffer to window, of size hop_size
-        winbuf = new Flt[hop_size];
-        // 
-        for(size_t i = 0; i < this->n_inputs; ++i)
+        this->set_name("OLA FFFT");
+        this->outputs = new Flt*[this->n_outputs];
+        main_mem->alloc_channels<Flt>(complex_size, this->n_outputs, this->outputs);
+        for(size_t ch = 0; ch < this->n_inputs; ++ch)
         {
-            for(size_t w = 0; w < win_count; ++w)
-            {
-                size_t pos_offset = (w+1) * 3;
-                size_t pos_in_buffer = (hop_size / 2) * w;
-                for(size_t n = 0 ; n < complex_size; ++n)
-                {
-                    this->outputs[i*3+2][pos_in_buffer+pos_offset+n] = n;
-                }
-
-            }
+            for(size_t n = 0; n < complex_size; ++n)
+                this->outputs[ch*3+2][n] = n;
         }
-
+        win_buffer = main_mem->alloc_buffer<Flt>(fft_size);
+        input_buffers = new Flt*[this->n_inputs];
+        main_mem->alloc_channels<Flt>(fft_size, this->n_inputs, input_buffers);
+        std::memset(circular_offsets.data(), 0, sizeof(circular_info) * this->n_inputs);
         for(auto & it : ffts)
-            it.init(this->hop_size);
-
-        std::cout << "OverlapFFT : " << hop_size << " & " << complex_size << std::endl;
+            it.init(fft_size);
+    }
+    
+    ~ola_fft()
+    {
+        delete win_buffer;
+        delete[] input_buffers;
     }
 
-    void process(connection<Flt> &previous) override
+    void process(connection<Flt> &previous, audio_context &ctx) override
     {
+        std::cout << "FFT Process" << std::endl;
         for(size_t ch = previous.output_range.first, i = previous.input_offset;
             ch <= previous.output_range.second; ++ch, ++i)
         {
-            for(size_t w = 0; w < win_count; ++w)
+            std::cout << circular_offsets[i].position << std::endl;
+            if( (previous.target->bloc_size + circular_offsets[i].position) <= hop_size)
             {
-                size_t pos_in_buffer = (hop_size / 2) * w;
-                size_t pos_offset = (w+1) * 3;
-                for(size_t n = 0; n < hop_size; ++n)
+                std::cout << "Condition ok" << std::endl;
+                std::copy(previous.target->outputs[ch],
+                    previous.target->outputs[ch] + previous.target->bloc_size, 
+                    input_buffers[i] + (fft_size - hop_size + circular_offsets[i].position) );
+                circular_offsets[i].position += previous.target->bloc_size;
+                if(circular_offsets[i].position >= hop_size)
                 {
-                    winbuf[n] = previous.target->outputs[ch][pos_in_buffer+n] * hanning(n, hop_size);
+                    circular_offsets[i].position %= hop_size;
+                    circular_offsets[i].update = true;
                 }
-                Flt *real = this->outputs[i*3] + pos_in_buffer + pos_offset;
-                Flt *imag = this->outputs[i*3+1] + pos_in_buffer + pos_offset;
-                ffts[i].fft(winbuf, real, imag);
+            } else  // graph bloc size is > to hop size, then we need to process FFT several times 
+            {
+                std::cout << "OLA FFT bloc size input must be power of two, and maximum half hop size (fft_size / overlap)" << std::endl;
+                std::cout << "Skip processing " << std::endl;
+            }
+
+            if(circular_offsets[i].update)
+            {
+                std::cout << " >> FFT Update new computation" << std::endl;
+                circular_offsets[i].update = false;
+                for(size_t n = 0; n < fft_size; ++n)
+                    win_buffer[n] = input_buffers[i][n] * hanning(n, fft_size);
+                
+                // Rotate input (could be replaced with circular buffer to prevent copy)
+                std::copy(input_buffers[i]+hop_size, input_buffers[i]+fft_size, input_buffers[i]);
+                ffts[i].fft(win_buffer, this->outputs[i*3], this->outputs[i*3+1]);
             }
         }
+        std::cout << "FFT done " << std::endl;
     }
-    Flt *winbuf;
-    size_t n_overlap, win_count, hop_size, complex_size;
+
+    Flt *win_buffer;
+    Flt **input_buffers;
+    size_t fft_size, n_overlap, hop_size, complex_size;
+    std::vector<circular_info> circular_offsets;
     std::vector<audiofft::AudioFFT> ffts;
 };
 
 template<typename Flt = double>
-struct over_ifft : public node<Flt>
+struct ola_ifft : public node<Flt>
 {
-    over_ifft(size_t inp = 3, size_t outp = 1,  
-        size_t blocsize = 1024, size_t samplerate = 48000, size_t overlap = 2)
-        : node<Flt>::node(node_init_mode::no_alloc, inp, outp, blocsize, samplerate)
+    ola_ifft(size_t inp, size_t outp, size_t fftsize, size_t overlap, size_t samplerate)
+        : node<Flt>::node(inp, outp, fftsize, samplerate, false)
+        , fft_size(fftsize)
         , n_overlap(overlap)
-        , win_count(n_overlap * 2 - 1)
-        , hop_size(blocsize / (overlap))
-        , complex_size(audiofft::AudioFFT::ComplexSize(hop_size))
-        , process_count(0)
+        , hop_size(fft_size/n_overlap)
+        , complex_size(audiofft::AudioFFT::ComplexSize(fft_size))
+        , circular_offsets(inp)
         , ffts(inp)
     {
-        if(this->n_inputs != (this->n_outputs * 3)) {
-            throw std::runtime_error("FFT outputs must be 3 times its inputs");
-        }
-        this->set_name("OverlapIFFT");
-        // Number of buffers is : input_channels * 3 * win_count
-        size_t nbufs = this->n_outputs * 3;
-        this->outputs = new Flt*[nbufs];
-        main_mem->alloc_channels<Flt>(this->bloc_size, nbufs, this->outputs);
+        if(!is_power_of_two(fft_size))
+            throw std::runtime_error("OLA FFT size must be power of two");
 
-        std::cout << "Allocated FFT " << std::endl;
-        // Also need a single buffer to window, of size hop_size
-        winbuf = (Flt*)main_mem->mem_reserve(sizeof(Flt)*hop_size);
-        std::cout << "Allocate winbuf " << std::endl;
+        if(this->n_inputs  != (this->n_outputs * 3) )
+            throw std::runtime_error("OLA FFT Output number must be 3 times input number");
+        
+        this->set_name("OLA IFFT");
+        this->outputs = new Flt*[this->n_outputs];
+        main_mem->alloc_channels<Flt>(hop_size, this->n_outputs, this->outputs);
 
+        ola_buffers = new Flt*[n_overlap *this->n_outputs];
+        main_mem->alloc_channels<Flt>(fft_size, n_overlap * this->n_outputs, ola_buffers);
+
+        std::memset(circular_offsets.data(), 0, sizeof(circular_info) * this->n_inputs);
         for(auto & it : ffts)
-            it.init(this->hop_size);
-        std::cout << "OverlapIFFT : " << hop_size << " & " << complex_size << std::endl;
+            it.init(fft_size);
     }
 
-    void process(connection<Flt> &previous) override 
+    void process(connection<Flt> &previous, audio_context &ctx) override
     {
-        if(process_count == 0)
-        {
-            for(size_t i = 0; i < this->n_outputs; ++i)
-                std::memset(this->outputs[i], 0, sizeof(Flt) * this->bloc_size);   
-        }
         for(size_t ch = previous.output_range.first, i = previous.input_offset;
             ch <= previous.output_range.second; ch+=3, ++i)
         {
-            for(size_t w = 0; w < win_count; ++w)
-            {
-                size_t pos_in_buf = (hop_size / 2) * w ;
-                size_t pos_offset = (w+1) * 3;
+            std::copy(this->outputs[i] + ctx.bloc_size, this->outputs[i] + this->hop_size, this->outputs[i]);
 
-                Flt *real = previous.target->outputs[ch] + pos_in_buf + pos_offset;
-                Flt *imag = previous.target->outputs[ch+1] + pos_in_buf + pos_offset;
-                ffts[i].ifft(winbuf, real, imag);
+            circular_offsets[i].position += ctx.bloc_size; 
+            std::cout << "IFFT : circular offset position : " << circular_offsets[i].position << std::endl;
+            if(circular_offsets[i].position >= hop_size)
+            {
+                std::cout << "IFFT Update new computation" << std::endl;
+                circular_offsets[i].position %= hop_size;
+
+                // Rotate ola buffers  (also, could be replaced with circular index to prevent copy)
+                for(size_t m = n_overlap-1; m > 0; m--)
+                {
+                    const size_t previous_idx = (i*n_overlap) + (m-1);
+                    const size_t cur_idx = previous_idx + 1;;
+                    std::copy(ola_buffers[previous_idx], 
+                        ola_buffers[previous_idx] + fft_size, ola_buffers[cur_idx]);
+                }
+                
+                ffts[i].ifft(ola_buffers[i*n_overlap], 
+                    previous.target->outputs[ch], previous.target->outputs[ch+1]);
+ 
+                // WOLA apply synthesis window
+                for(size_t n = 0; n < fft_size; ++n)
+                    ola_buffers[i*n_overlap][n] *= hanning(n, fft_size);
+                
                 for(size_t n = 0; n < hop_size; ++n)
                 {
-                    this->outputs[i][n+pos_in_buf] += winbuf[n] * hanning(n, hop_size);
+                    Flt sum = 0.0;
+                    for(size_t m = 0; m < n_overlap; ++m)
+                        sum += ola_buffers[i*n_overlap+m][n+(m*hop_size)];
+
+                    sum /= (n_overlap / 2);
+                    this->outputs[i][n] = sum;
                 }
             }
         }
-
-        process_count = (process_count + 1) % this->n_nodes_in;
-        // Clean out buffers when 
+        std::cout << "IFFT done " << std::endl;
     }
 
-    Flt *winbuf;
-    size_t n_overlap, win_count, hop_size, complex_size, process_count;
+    Flt **ola_buffers;
+    size_t fft_size, n_overlap, hop_size, complex_size;
+    std::vector<circular_info> circular_offsets;
     std::vector<audiofft::AudioFFT> ffts;
 };
 
-/*
-    This is used to only take the constant energy part of overlap save ifft
-        The dash part has constant energy 
-       --------
-      /\  /\  /\
-     /  \/  \/  \
-    /    \  /    \
-    |____________|
-
-*/
-
 template<typename Flt = double>
-struct over_ifft_downbloc : public node<Flt>
+struct circular_downbloc : public node<Flt>
 {
-    over_ifft_downbloc(size_t inp = 1, size_t outp = 1,  
-        size_t blocsize = 1024, size_t samplerate = 48000, size_t overlap = 2)
-    : node<Flt>::node(node_init_mode::no_alloc, inp, outp, blocsize, samplerate)
-    , n_overlap(overlap)
-    , offset(blocsize/overlap/2)
+    circular_downbloc(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
+        : node<Flt>::node(inp, outp, blocsize, samplerate)
+        , counts(this->n_inputs)
     {
-        this->bloc_size = blocsize - ( offset * 2);
-        std::cout << "Allocate ifft downbloc" << std::endl;
-        this->outputs = new Flt*[this->n_outputs];
-        main_mem->alloc_channels<Flt>(this->bloc_size, this->n_outputs, this->outputs);
-        std::cout << "over ifft created "<< std::endl;
+        if(this->n_inputs != this->n_outputs)
+            throw std::runtime_error("Circular downbloc : inputs and outputs must be equal");
+        this->set_name("Circular downbloc");
     }
 
-    void process(connection<Flt> &previous) override
+    void process(connection<Flt> &previous, audio_context &ctx)
     {
-        std::cout << "over ifft down process " << std::endl;
         for(size_t ch = previous.output_range.first, i = previous.input_offset;
             ch <= previous.output_range.second; ++ch, ++i)
         {
-            std::copy(previous.target->outputs[ch] + offset, 
-                previous.target->outputs[ch] + (previous.target->bloc_size - offset), 
+            std::copy(previous.target->outputs[ch] + counts[i], 
+                previous.target->outputs[ch]+this->bloc_size + counts[i], 
                 this->outputs[i]);
+            counts[i] = (counts[i] + this->bloc_size) % previous.target->bloc_size;
         }
     }
-    
 
-    size_t n_overlap, offset, total_bloc;
+    size_t down_factor;
+    std::vector<size_t> counts;
 };
 
 #endif

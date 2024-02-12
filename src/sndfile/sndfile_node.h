@@ -12,6 +12,7 @@ struct sndread_node : public node<Flt>
 {
     sndread_node(std::string filepath, size_t blocsize = 128, size_t samplerate = 48000)
         : node<Flt>{0, 1, blocsize, samplerate}
+        , loop(true)
     {
         this->set_name("SndRead");
         _sf = std::make_unique<SndfileHandle>(filepath, SFM_READ);
@@ -26,9 +27,10 @@ struct sndread_node : public node<Flt>
         this->interleaved = new Flt[this->n_outputs * this->bloc_size];
     }
 
-    void process(connection<Flt> &previous) override
+    void process(connection<Flt> &previous, audio_context &ctx) override
     {
         size_t readcnt = _sf->readf(this->interleaved, this->bloc_size);
+        std::cout << "read : " << readcnt << std::endl;
         for(size_t ch = 0; ch < this->n_outputs; ++ch)
         {
             for(size_t i = 0; i < this->bloc_size; ++i)
@@ -37,8 +39,17 @@ struct sndread_node : public node<Flt>
                 this->outputs[ch][i] = this->interleaved[index];
             }
         }
+        if(loop && (readcnt < this->bloc_size) )
+            _sf->seek(0, SF_SEEK_SET);
     }
 
+    void seek(size_t ms)
+    {
+        if(_sf.get() != nullptr)
+            _sf->seek(ms * (double(_sf->samplerate())/1000.0), SF_SEEK_SET);
+    }
+
+    bool loop;
     Flt *interleaved;
     std::unique_ptr<SndfileHandle> _sf;
 };
@@ -58,8 +69,9 @@ struct sndwrite_node : public node<Flt>
         interleaved = (Flt*)main_mem->mem_reserve(this->bloc_size * this->n_inputs * sizeof(Flt));
     }
 
-    void process(connection<Flt> &previous) override
+    void process(connection<Flt> &previous, audio_context &ctx) override
     {
+        std::cout << "sndwrite" << std::endl;
         for(size_t ch = previous.output_range.first, i = previous.input_offset;
             ch <= previous.output_range.second; ++ch, ++i)
         {
@@ -69,11 +81,12 @@ struct sndwrite_node : public node<Flt>
                 interleaved[index] = previous.target->outputs[ch][n];
             }
             std::copy(previous.target->outputs[ch], 
-                previous.target->outputs[ch]+previous.target->bloc_size, this->outputs[ch]);
+                previous.target->outputs[ch] + this->bloc_size, this->outputs[ch]);
             process_cnt = (process_cnt + 1) % this->n_nodes_in;
         }
         if(process_cnt == 0) 
             _sf->writef(interleaved, this->bloc_size);
+        std::cout << "sndwrite OK" << std::endl;
     }
 
     size_t process_cnt;

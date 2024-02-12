@@ -67,7 +67,8 @@
         "typeinfo": "cpp",
         "__nullptr": "cpp",
         "ios": "cpp",
-        "locale": "cpp"
+        "locale": "cpp",
+        "__string": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

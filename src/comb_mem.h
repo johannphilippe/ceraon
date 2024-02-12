@@ -13,7 +13,7 @@ struct vec
         : _capacity(size)
         , used(0)
     {
-        _data = new std::byte[size];
+        _data = new std::byte[size]();
     }
 
     std::byte* data() {return _data;}
@@ -23,22 +23,18 @@ struct vec
     std::byte *_data;
 };
 
-struct mem_zone : public vec //public std::vector<std::byte>
+struct mem_zone : public vec 
 {
     mem_zone(size_t nbytes)
-        : vec(nbytes)
+        : vec::vec(nbytes)
     {}
 
     std::byte *reserve_mem(size_t nbytes, bool *result)
     {
-        std::cout << "asking nbytes : " << nbytes 
-            << " while capacity is : " << (this->capacity() - used) << std::endl;
         std::byte *ptr = nullptr;
         if( (this->capacity() - this->used) >= nbytes)
         {
-            std::cout << "capacity is ok " << std::endl;
             ptr = this->data() + this->used; 
-            std::cout << "ptr : " << ptr << std::endl;
             this->used += nbytes;
             *result = true;;
             return ptr;
@@ -70,7 +66,6 @@ struct mem_alloc
         size_t new_capacity = mem.back().capacity() * 2;
         while(new_capacity < nbytes)
             new_capacity *= 2;
-        std::cout << "new capacity = " << new_capacity << " & " << nbytes << std::endl;
         mem.push_back(mem_zone(new_capacity));
         ptr = mem.back().reserve_mem(nbytes, &res);
         if(res)
@@ -80,26 +75,35 @@ struct mem_alloc
         return nullptr;
     }
 
+    template<typename Flt = double> 
+    Flt *alloc_buffer(size_t bloc_size) 
+    {
+        return new Flt[bloc_size]();
+        /*
+        size_t nbytes = (bloc_size * sizeof(Flt));
+        std::byte *ptr = this->mem_reserve(nbytes);
+        if(ptr == nullptr)
+            throw std::runtime_error("Allocation error");
+        return (Flt*)ptr;
+        */
+    }
+
     template<typename Flt = double>
     void alloc_channels(size_t bloc_size, size_t nchannels, Flt **dptr)
     {
-
-        std::cout << "alloc channels " << nchannels << " & " << bloc_size << std::endl;
+        for(size_t i = 0; i < nchannels; ++i)
+            dptr[i] = new Flt[bloc_size]();
+        /*
         size_t nbytes = (bloc_size * nchannels) * sizeof(Flt);
         std::byte *ptr = this->mem_reserve(nbytes);
-        std::cout << ptr << std::endl;
         if(ptr == nullptr)
             throw std::runtime_error("Allocation error");
 
-        std::cout << "allocated " << std::endl;
         for(size_t i = 0; i < nchannels; ++i)
         {
             size_t index_in_zone = i * (bloc_size);
-            std::cout << "index in zone :" << index_in_zone << std::endl;
             dptr[i] = (Flt *) ptr + index_in_zone;
-            std::cout << dptr[i] << std::endl;
-        }
-        std::cout << " pushed pointer to location" << std::endl;
+        }*/
     }
 
     size_t total_used()

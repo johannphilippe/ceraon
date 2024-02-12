@@ -79,7 +79,7 @@ struct faust_jit_node : public MapUI, public node<Flt>
         delete m_dsp;
     }
 
-    void process(connection<Flt> &previous)
+    void process(connection<Flt> &previous, audio_context &ctx)
     {
         if(this->n_inputs > 0)
         {

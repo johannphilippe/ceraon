@@ -1,3 +1,4 @@
+
 #include "../include/combinator3000_api.h"
 
 node<double> *create_node(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
@@ -37,7 +38,6 @@ rtgraph<double> *create_rtgraph(size_t inp, size_t outp, size_t blocsize, size_t
     return new rtgraph<double>(inp, outp, blocsize, samplerate);
 }
 
-#ifdef FFT_NODE
 #include "fft/fft_node.h"
 node<double> *create_fft_node(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
 {
@@ -48,19 +48,6 @@ node<double> *create_ifft_node(size_t inp, size_t outp, size_t blocsize, size_t 
 {
     return new ifft_node<double>(inp, outp, blocsize, samplerate);
 }
-#else
-node<double> *create_fft_node(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
-{
-    throw std::runtime_error("FFT node is not enabled. Recompile to enable it.");
-    return new node<double>(inp, outp, blocsize, samplerate);
-}
-
-node<double> *create_ifft_node(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
-{
-    throw std::runtime_error("FFT node is not enabled. Recompile to enable it.");
-    return new node<double>(inp, outp, blocsize, samplerate);
-}
-#endif
 
 
 #ifdef CSOUND_NODE
@@ -135,7 +122,7 @@ void delete_graph(graph<double> *g) {delete g;}
 
 bool node_connect(node<double> *a, node<double> *b) {return a->connect(b);}
 bool node_disconnect(node<double> *a, node<double> *b) {return a->disconnect(b);}
-void node_process(node<double> *n, connection<double> *previous) {n->process(*previous);}
+void node_process(node<double> *n, connection<double> *previous, audio_context *ctx) {n->process(*previous, *ctx);}
 
 void csound_node_set_channel(void *cs_ptr, const char *name, double value)
 {

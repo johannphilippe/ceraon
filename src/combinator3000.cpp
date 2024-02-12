@@ -3,30 +3,20 @@
 #include "comb_mem.h"
 
 template<typename Flt>
-node<Flt>::node( size_t inp, size_t outp, size_t blocsize, size_t samplerate)
+node<Flt>::node( size_t inp, size_t outp, size_t blocsize, size_t samplerate, bool alloc_memory)
     : n_inputs(inp)
     , n_outputs(outp)
     , bloc_size(blocsize)
     , sample_rate(samplerate)
     , n_nodes_in(0)
 {
+    if(!is_power_of_two(bloc_size) && (bloc_size != 1))
+        throw std::runtime_error("Node bloc size must be power of two or equal 1");
     this->set_name("Node");
-    outputs = new Flt*[n_outputs];
-    outputs[0] = nullptr;
-    main_mem->alloc_channels<Flt>(bloc_size, n_outputs, outputs);
-}
-
-template<typename Flt>
-node<Flt>::node( node_init_mode init_memory, size_t inp, size_t outp, size_t blocsize, size_t samplerate)
-    : n_inputs(inp)
-    , n_outputs(outp)
-    , bloc_size(blocsize)
-    , sample_rate(samplerate)
-{
-    this->set_name("Node");
-    if(init_memory == node_init_mode::alloc) {
+    if(alloc_memory)
+    {
         outputs = new Flt*[n_outputs];
-        main_mem->alloc_channels(bloc_size, n_outputs, outputs);
+        main_mem->alloc_channels<Flt>(bloc_size, n_outputs, outputs);
     }
 }
 
@@ -45,7 +35,7 @@ bool node<Flt>::connect(node<Flt> *n, bool adapt_channels)
 {
     if(this->n_outputs == n->n_inputs) 
     {
-        connections.push_back(connection{n, {0, this->n_outputs - 1}, 0});
+        connections.push_back(connection<Flt>{n, {0, this->n_outputs - 1}, 0});
         n->n_nodes_in++;
         return true;
     } else 
@@ -76,7 +66,7 @@ bool node<Flt>::connect(node<Flt> *n, bool adapt_channels)
 }
 
 template<typename Flt>
-bool node<Flt>::connect(connection n, bool adapt_channels)
+bool node<Flt>::connect(connection<Flt> n, bool adapt_channels)
 {
     /*
     if(n.output_range.first == 0
@@ -138,7 +128,7 @@ bool node<Flt>::disconnect(node<Flt> *n)
 }
 
 template<typename Flt>
-void node<Flt>::process(connection &previous)
+void node<Flt>::process(connection<Flt> &previous, audio_context &ctx)
 {
     // Copying inputs to outputs (input is the output of previous node)
     if(n_inputs > 0) 
@@ -178,7 +168,7 @@ channel_adapter<Flt>::channel_adapter(size_t inp, size_t outp, size_t blocsize, 
 }
 
 template<typename Flt>
-void channel_adapter<Flt>::process(connection<Flt> &previous)
+void channel_adapter<Flt>::process(connection<Flt> &previous, audio_context &ctx)
 {
     /*
         Find a way 
@@ -244,7 +234,7 @@ upbloc<Flt>::upbloc(size_t inp , size_t outp,
 }
 
 template<typename Flt>
-void upbloc<Flt>::process(connection<Flt> &previous) 
+void upbloc<Flt>::process(connection<Flt> &previous, audio_context &ctx) 
 {
     size_t inp_bloc_size = previous.target->bloc_size;
 
@@ -268,7 +258,7 @@ downbloc<Flt>::downbloc(size_t inp , size_t outp,
 }
 
 template<typename Flt>
-void downbloc<Flt>::process(connection<Flt> &previous) 
+void downbloc<Flt>::process(connection<Flt> &previous, audio_context &ctx) 
 {
     size_t inp_bloc_size = previous.target->bloc_size;
     for(size_t ch = previous.output_range.first, i = previous.input_offset;
@@ -292,12 +282,13 @@ mixer<Flt>::mixer(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
 }
 
 template<typename Flt>
-void mixer<Flt>::process(connection<Flt> &previous)
+void mixer<Flt>::process(connection<Flt> &previous, audio_context &ctx)
 {
     if(this->n_nodes_in == 0) {
         throw std::runtime_error("Mixer node must have at least one input (ideally two or more, it is a mixer)");
         return;
     }
+    std::cout << "Mixer " << std::endl;
 
     if(this->process_count == 0)
     {
@@ -314,6 +305,7 @@ void mixer<Flt>::process(connection<Flt> &previous)
     }
 
     this->process_count = (this->process_count + 1) % this->n_nodes_in;
+    std::cout << "Mixer ok " << std::endl;
 }
 
 template class mixer<double>;
@@ -340,7 +332,7 @@ simple_upsampler<Flt>::~simple_upsampler()
 }
 
 template<typename Flt>
-void simple_upsampler<Flt>::process(connection<Flt> &previous)
+void simple_upsampler<Flt>::process(connection<Flt> &previous, audio_context &ctx)
 {
     for(size_t ch = previous.output_range.first, i = previous.input_offset; 
         ch <= previous.output_range.second; ++ch, ++i)
@@ -387,12 +379,12 @@ upsampler<Flt>::~upsampler()
 }
 
 template<typename Flt>
-void upsampler<Flt>::process(connection<Flt> &previous)
+void upsampler<Flt>::process(connection<Flt> &previous, audio_context &ctx)
 {
     connection<Flt> p = previous;
     for(size_t i = 0; i < n_cascade; ++i) 
     {
-        upsamplers[i]->process(p);
+        upsamplers[i]->process(p, ctx);
         p.target = upsamplers[i];
     }
 
@@ -426,7 +418,7 @@ downsampler<Flt>::~downsampler()
 }
 
 template<typename Flt>
-void downsampler<Flt>::process(connection<Flt> &previous)
+void downsampler<Flt>::process(connection<Flt> &previous, audio_context &ctx)
 {
     for(size_t ch = previous.output_range.first, i = previous.input_offset;
         ch <= previous.output_range.second; ++ch, ++i)
@@ -451,7 +443,11 @@ graph<Flt>::graph(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
     , n_outputs(outp)
     , bloc_size(blocsize)
     , sample_rate(samplerate)
+    , context{n_inputs, n_outputs, bloc_size, sample_rate}
 {
+    if(!is_power_of_two(bloc_size))
+        throw std::runtime_error("Graph bloc size must be power of two");
+
     to_call.reserve(128);
     next_call.reserve(128);
     call_list.reserve(256);
@@ -465,8 +461,9 @@ graph<Flt>::graph(size_t inp, size_t outp, size_t blocsize, size_t samplerate)
 template<typename Flt>
 void graph<Flt>::process_bloc()
 {
+    std::lock_guard<std::recursive_mutex> lock(_mtx);
     for(size_t i = 0; i < call_list.size(); ++i)
-        call_list[i].callee->process(call_list[i].caller_ctx);
+        call_list[i].callee->process(call_list[i].caller_ctx, context);
 }
 
 template<typename Flt>
@@ -542,11 +539,16 @@ void graph<Flt>::generate_faust_diagram()
     {
         std::string name = it.first;
         std::replace(name.begin(), name.end(), ' ', '_');
+        std::transform(name.begin(), name.end(), name.begin(),
+            [](unsigned char c){ return std::tolower(c); });
+
         std::string s = name + " = ";
         std::string sep = "";
+
+        int rnd = rand() % 100;
         for(size_t i = 0; i < it.second.first; ++i) 
         {
-            s.append(sep + " _");
+            s.append(sep + " (_*" + std::to_string(rnd) + ")");
             sep = ",";
         }
 
@@ -557,9 +559,10 @@ void graph<Flt>::generate_faust_diagram()
         if(it.second.first > 0)
             s.append(op);
         sep = "";
+        rnd = rand() % 100;
         for(size_t i = 0; i < it.second.second; ++i)
         {
-            s.append(sep + " _");
+            s.append(sep + " (_*" + std::to_string(rnd) + ")");
             sep = ",";
         }
         s.append(";\n");
@@ -594,6 +597,7 @@ void graph<Flt>::_find_and_add_out(node<Flt> * n)
     {
         if(n->n_outputs > 0) 
         {
+            std::cout << "connecting " << n->get_name() << " to mix " << std::endl;
             n->connect(_mix.get());
         }
         return;
@@ -609,6 +613,7 @@ void graph<Flt>::_find_and_add_out(node<Flt> * n)
         if(_connect_list[i].target->connections.size() == 0
             && _connect_list[i].target->n_outputs > 0)
         {
+            std::cout << "connecting " << _connect_list[i].target->get_name() << " to mix " << std::endl;
             _connect_list[i].target->connect(_mix.get()); 
             
         } else 
@@ -680,6 +685,12 @@ void graph<Flt>::_process_grape()
 template<typename Flt>
 void graph<Flt>::_remove_duplicates()
 {
+    for(auto & it : call_list)
+    {
+        std::cout << "full list : " << it.callee->get_name() << std::endl;
+        if(it.caller_ctx.target != nullptr)
+            std::cout << "\t\t called by "<<  it.caller_ctx.target->get_name() << std::endl;
+    }
    for(size_t i = 0; i < call_list.size(); ++i)
    {
         for(size_t j = 0; j < call_list.size(); ++j)
@@ -687,7 +698,11 @@ void graph<Flt>::_remove_duplicates()
             if(i == j) continue;
             if(call_list[i] == call_list[j])
             {
+                std::cout << "erasing " << call_list[j].callee->get_name() << std::endl;
+                if( call_list[j].caller_ctx.target != nullptr)
+                    std::cout << "\t connected with " << call_list[j].caller_ctx.target->get_name() << std::endl;
                 call_list.erase(call_list.begin() + j);
+                --j;
             }
         }
    }
@@ -820,3 +835,90 @@ int rtgraph_callback(void *out_buffer, void *in_buffer,
     }
     return 0;
 }
+
+//#define MINIAUDIO_IMPLEMENTATION
+//#include "miniaudio.h"
+
+void  miniaudio_cbk(ma_device *device, void* outputs, 
+    const void *inputs, ma_uint32 frame_count)
+{
+    std::cout << "MINIRT : " << frame_count << std::endl;
+    mini_rtgraph<double> *_graph = (mini_rtgraph<double> *)device->pUserData;
+    const float *f_inp = (const float *)inputs;
+    float *f_outp = (float *)outputs;
+    for(size_t i = 0; i < _graph->n_inputs; ++i)
+    {
+        for(size_t n = 0; n < frame_count; ++n)
+            _graph->_input_node->outputs[i][n] = (double)f_inp[n*_graph->n_inputs+i];
+    }
+    _graph->process_bloc();
+    for(size_t o = 0; o < _graph->n_outputs; ++o)
+    {
+        for(size_t n = 0; n < frame_count; ++n)
+            f_outp[n*_graph->n_outputs+o] = (float)_graph->_mix->outputs[o][n];
+    }
+    std::cout << "MiniRT OK " << std::endl;
+}
+
+template<typename Flt>
+mini_rtgraph<Flt>::mini_rtgraph(size_t inp, size_t outp,
+        size_t blocsize, size_t samplerate)
+    : graph<Flt>::graph(inp, outp, blocsize, samplerate)
+{
+
+    config = ma_device_config_init((inp>0) ? ma_device_type_duplex : ma_device_type_playback);
+    config.playback.format = ma_format_f32;
+    config.playback.channels = outp;    
+    config.sampleRate = this->sample_rate;
+    config.periodSizeInFrames = this->bloc_size;
+    config.dataCallback = miniaudio_cbk;
+    config.pUserData = this;
+
+
+
+    if(ma_device_init(NULL, &config, &device) != MA_SUCCESS) 
+        throw( std::runtime_error("Miniaudio callback could not be initialized "));
+    
+}
+
+template<typename Flt>
+void mini_rtgraph<Flt>::start_stream() 
+{
+    ma_device_start(&device);
+}
+template<typename Flt>
+void mini_rtgraph<Flt>::stop_stream() 
+{
+    ma_device_uninit(&device);
+}
+
+template<typename Flt>
+void mini_rtgraph<Flt>::list_devices()
+{
+    ma_context ctx;
+    if(ma_context_init(NULL, 0, NULL, &ctx) != MA_SUCCESS)
+        throw std::runtime_error("Cannot initialize Miniaudio");
+    ma_device_info *playback_info;
+    ma_uint32 playback_count;
+    ma_device_info *capture_info;
+    ma_uint32 capture_count;
+    if(ma_context_get_devices(&ctx, &playback_info, &playback_count, &capture_info, &capture_count) != MA_SUCCESS)
+        throw std::runtime_error("Cannot initialize Miniaudio - cannot get devices info");
+    
+
+    std::cout << "Capture : " << std::endl;
+    for(size_t i = 0; i < capture_count; ++i)
+    {
+        std::cout  << capture_info[i].name << std::endl;
+        std::cout << "\t" << capture_info[i].nativeDataFormats->channels << std::endl;
+    }
+
+    std::cout << "Playback " << std::endl;
+    for(size_t i = 0; i < playback_count; ++i)
+    {
+        std::cout << playback_info[i].name << std::endl;
+        std::cout << "\t" << playback_info[i].nativeDataFormats->channels << std::endl;
+    }
+}
+
+template class mini_rtgraph<double>;

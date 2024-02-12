@@ -17,6 +17,10 @@
 
 #include<iostream>
 
+
+// Collection of windows: 
+// https://github.com/sidneycadot/WindowFunctions/tree/master
+
 // Windows
 inline double hanning(int index, int length) {
     return  0.5 * (1.0 - cos(2.0 * M_PI * double(index) / ( double(length) - 1.0 )));
@@ -32,6 +36,63 @@ inline double blackman(int index, int length) {
     return 0.42 - (0.5 * cos(2 * M_PI * index / (length - 1))) + (0.08 * cos(4 * M_PI * index / (length - 1)));
 }
 
+inline double triangle(int index, int length) {
+    const unsigned int denominator = (length % 2 != 0) ? (length + 1) : length;
+    return 1.0 - fabs(2.0 * double(index) - (double(length)-1.0)) / denominator;
+}
+
+inline double bartlett(int index, int length) {
+    const unsigned int denominator = (length - 1);
+    return 1.0 - fabs(2.0 * double(index) - (double(length) - 1)) / denominator;
+}
+// Wola windows
+inline double root_hann(int index, int length)
+{
+    return std::sqrt(hanning(index, length));//std::sqrt(0.5 + 0.5 * std::cos(2*M_PI*double(index)/double(length)));
+}
+
+
+/*inline double blackmanharris(int index, int length)
+{
+    const double coefs[3] = {0.42, -0.5, 0.08};
+    const size_t ncoef = 3;
+    double res = 0.0;
+    for(size_t j = 0; j < ncoef; ++j)
+        res += coefs[j] * cos(double(index) * double(j) * 2.0 * M_PI / double(length));
+    return res;
+}
+*/
+inline bool is_power_of_two(int n) { return (n > 0 && !(n & (n-1))); }
+
+enum class window_t
+{
+    hanning, hamming, blackman
+};
+
+inline void apply_window(size_t len, window_t type, double *buf)
+{
+    for(size_t i = 0; i < len; ++i)
+    {
+        switch(type)
+        {
+        case window_t::hanning:
+        {
+            buf[i] *= hanning(i, len);
+            break;   
+        }
+        case window_t::hamming:
+        {
+            buf[i] *= (hamming(i, len) - hamming_scaling_constant) * hamming_scaling_factor; 
+            break;
+        }
+        case window_t::blackman:
+        {
+            buf[i] *= blackman(i, len);
+            break;   
+        }
+        }
+    }
+}
 
 inline std::string read_file(std::string path)
 {
@@ -53,14 +114,14 @@ struct name_gen
             "flower", "sky", "gear", "shaker", "kitty", "communist", "frog", "sword", "fog", 
             "chocolate", "queen", "intention", "tooth", "knowledge", "virus", "failure", "cookie", "anxiety", 
             "attitude", "feedback", "signifiance", "monk", "pizza", "mojo", "splash", "pineapple", 
-            "spleen", "routine", "night", "morning", "edge", "candy", "famine"
+            "spleen", "routine", "night", "morning", "edge", "candy", "famine", "grizzly", "fatigue"
         };
 
         const std::vector<std::string> adjectives = {
             "hardcode", "cute", "damaged", "majestic", "majestic", 
             "dusty", "lonely", "scared", "thirsty", "attractive", 
             "mighty", "cool", "orange", "abrasive", "satisfying", "greedy", "lame", "popular", "fuzzy",
-            "rusty", "crispy", "curious",  "sweet", "fancy"
+            "rusty", "crispy", "curious",  "sweet", "fancy", "priceless", "disruptive"
         };
 
 

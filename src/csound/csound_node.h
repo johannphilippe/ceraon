@@ -51,7 +51,7 @@ struct csound_node : public Csound, node<Flt>
         return new csound_node<Flt>(csd_str, inp, outp, blocsize, samplerate);
     }
 
-    void process(connection<Flt> &previous)
+    void process(connection<Flt> &previous, audio_context &ctx)
     {
         std::cout << "perform " << std::endl;
 

@@ -27,7 +27,7 @@ struct faust_node : public node<Flt>, MapUI
         else
             inputs = nullptr; 
     }
-    void process(connection<Flt> &previous)
+    void process(connection<Flt> &previous, audio_context &ctx)
     {
         if(this->n_inputs > 0)
         {
